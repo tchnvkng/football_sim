@@ -249,10 +249,10 @@ class Team(object):
     def __init__(self, name='team name', country='SH'):
         self.name = name
         self.country = country
-        self.lmbd_set = np.linspace(0, 4, 1001)
+        self.lmbd_set = np.linspace(0, 10, 101)
         self.p = self.lmbd_set * 0 + 1
         self.p = self.p / self.p.sum()
-        self.tau_set = np.linspace(0, 2, 1001)
+        self.tau_set = np.linspace(0, 1, 101)
         self.q = self.tau_set * 0 + 1
         self.q = self.q / self.q.sum()
 
@@ -274,10 +274,9 @@ class Team(object):
         self.q=(1-p_mix)*self.q+p_mix/self.q.shape[0]
         self.normalize()
 
-
-    def __add__(self, other_team, n_scenarios=int(1e5)):
+    def outcomes_vs(self, other_team, n_scenarios=int(1e5), home_advantage=np.array([0, 1])):
         g = np.zeros([n_scenarios, 2])
-        g[:, 0], g[:, 1], _ = self.vs(other_team, n=n_scenarios)
+        g[:, 0], g[:, 1], _ = self.vs(other_team, n=n_scenarios, home_advantage=home_advantage)
         u, c = np.unique(g, axis=0, return_counts=True)
         loc = (-c).argsort()
         u = u[loc, :]
@@ -294,17 +293,15 @@ class Team(object):
             plt.bar(x[_ind], y, label='{:s}: {:0.1f}%'.format(_l, y.sum()))
         plt.xticks(x, u, rotation='vertical');
         plt.legend()
-
         plt.xlim(-0.5, x[p > 0.5].max() + 0.5)
         plt.grid()
-        plt.title(g.mean(axis=0))
+        gmean=g.mean(axis=0)
+        plt.title('{} ({:.2f}) vs {} ({:.2f})'.format(self.name,gmean[0] ,other_team.name,gmean[1]))
 
-    def vs(self, other_team, n=int(1e4),home_advantage=np.array([0,0])):
-        lH = np.random.choice(self.lmbd_set, size=n, p=self.p) + np.random.choice(other_team.tau_set, size=n,
-                                                                                  p=other_team.q)+home_advantage[0]
+    def vs(self, other_team, n=int(1e4),home_advantage=np.array([0,1])):
+        lH = (np.random.choice(self.lmbd_set, size=n, p=self.p)+home_advantage[0])*np.random.choice(other_team.tau_set, size=n, p=other_team.q)
         gH = np.random.poisson(lH)
-        lA = np.random.choice(self.tau_set, size=n, p=self.q) + np.random.choice(other_team.lmbd_set, size=n,
-                                                                                 p=other_team.p)+home_advantage[1]
+        lA = np.random.choice(other_team.lmbd_set, size=n, p=other_team.p)*np.random.choice(self.tau_set, size=n, p=self.q)*home_advantage[1]
         lA=np.maximum(lA,0)
         gA = np.random.poisson(lA)
         match_des = self.name + ' vs ' + other_team.name
@@ -329,7 +326,7 @@ class Team(object):
         return self.p.dot(self.lmbd_set), self.q.dot(self.tau_set)
 
     def scored_against(self, other, k):
-        lmb_plus_tau = self.lmbd_set + other.tau_set[:, np.newaxis]
+        lmb_plus_tau = self.lmbd_set*other.tau_set[:, np.newaxis]
         new_p = ((np.exp(-lmb_plus_tau) * (lmb_plus_tau ** k)).T * other.q).sum(axis=1) * self.p
         self.p = new_p / new_p.sum()
         new_q = ((np.exp(-lmb_plus_tau) * (lmb_plus_tau ** k)) * self.p).sum(axis=1) * other.q
