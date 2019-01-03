@@ -41,6 +41,7 @@ def get_data_538():
 
     return all_data
 
+
 def add_match(data, home, home_goals, away, away_goals,the_date=pd.to_datetime('today')):
     if data.index.shape[0]>0:
         max_ind = data.index.max()
@@ -51,11 +52,15 @@ def add_match(data, home, home_goals, away, away_goals,the_date=pd.to_datetime('
     return data.append(a)
 
 
-class Calibrator():
+class Calibrator:
     def __init__(self, file_name, old_teams=dict(), redo=False):
         self.file_name = file_name
         self.teams = dict()
         self.old_teams=old_teams
+        self.raw_data = None
+        self._teams_created = False
+        self.domestic_leagues = ['FL1', 'BPL', 'SPD', 'ISA', 'GB', 'DE']
+        self.eu_leagues = ['UCL', 'UEL']
         self.processed_matches = []
         if redo:
             print('Force recalibrate')
@@ -75,6 +80,7 @@ class Calibrator():
         with open(self.file_name, 'rb') as input:
             self.teams = pickle.load(input)
             self.processed_matches = pickle.load(input)
+            self.raw_data = pickle.load(input)
 
     def save(self):
         if os.path.isfile(self.file_name):
@@ -83,6 +89,7 @@ class Calibrator():
         with open(self.file_name, 'wb') as output:
             pickle.dump(self.teams, output, pickle.HIGHEST_PROTOCOL)
             pickle.dump(self.processed_matches, output, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(self.raw_data, output, pickle.HIGHEST_PROTOCOL)
 
     def create_team(self,team_name,country):
         if team_name not in self.teams:
@@ -92,14 +99,57 @@ class Calibrator():
             else:
                 self.teams[team_name] = Team(name=team_name, country=country)
 
-    def process_data(self, _data, _country,update_params=True):
-        for index, row in _data.iterrows():
+    def download_all_data(self):
+        f = lambda x: "".join([y[0] for y in x.upper().split()])
+        df = pd.read_csv('https://projects.fivethirtyeight.com/soccer-api/club/spi_matches.csv')
+        df = df.rename(
+            columns={'team1': 'HomeTeam', 'team2': 'AwayTeam', 'score1': 'FTHG', 'score2': 'FTAG', 'league': 'League'})
+        ind = ~(df['FTAG'].isnull() | df['FTHG'].isnull())
+        df = df.loc[ind]
+        df['FTAG'] = df['FTAG'].astype(int)
+        df['FTHG'] = df['FTHG'].astype(int)
+        df['Date'] = pd.to_datetime(df['date'])
+        df = df[['Date', 'League', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'xg1', 'xg2', 'nsxg1',
+                 'nsxg2']]
+        ind = (df['Date'] > pd.to_datetime('2018-07-01'))
+        df = df.loc[ind]
+        df['League'] = df['League'].apply(f)
+        self.raw_data = df
+
+    def get_current_results(self,league):
+        if self.raw_data is None:
+            self.download_all_data()
+        ind = self.raw_data['League'] == 'BPL'
+        return self.raw_data.loc[ind]
+    def create_all_teams(self):
+        if self.raw_data is None:
+            self.download_all_data()
+        for _league in self.domestic_leagues:
+            self.create_team(_league, 'UEFA')
+            self.create_team(_league+'Home', _league+'0')
+            self.create_team(_league + 'Away', _league + '0')
+        ind = self.raw_data['League'].apply(lambda x: x in self.domestic_leagues)
+        for _, row in self.raw_data.loc[ind, ['League', 'HomeTeam', 'AwayTeam']].iterrows():
             home_team_name = row['HomeTeam']
             away_team_name = row['AwayTeam']
-            self.create_team(home_team_name,_country)
-            self.create_team(away_team_name,_country)
-            self.create_team('Home'+_country,_country+'0')
-            self.create_team('Away'+_country,_country+'0')
+            league = row['League']
+            self.create_team(home_team_name, league)
+            self.create_team(away_team_name, league)
+        self._teams_created = True
+
+    def process_data(self,update_params=True):
+        if not self._teams_created:
+            self.create_all_teams()
+        ind = self.raw_data['League'].apply(lambda x: x in self.domestic_leagues + self.eu_leagues)
+        for index, row in self.raw_data.loc[ind].iterrows():
+            league = row['League']
+            if league in self.domestic_leagues:
+                home_team_name = row['HomeTeam']
+                away_team_name = row['AwayTeam']
+            elif league in self.eu_leagues and row['HomeTeam'] in self.teams and row['AwayTeam'] in self.teams:
+                home_team_name=self.teams[row['HomeTeam']].country
+                away_team_name = self.teams[row['AwayTeam']].country
+
             date = row['Date'].strftime('%Y-%m-%d')
             hg = row['FTHG']
             ag = row['FTAG']
@@ -110,12 +160,11 @@ class Calibrator():
                     self.processed_matches.append(this_match)
                     self.teams[home_team_name].scored_against(self.teams[away_team_name], hg)
                     self.teams[away_team_name].scored_against(self.teams[home_team_name], ag)
-                    self.teams['Home'+_country].scored_against(self.teams['Away'+_country], hg)
-                    self.teams['Away'+_country].scored_against(self.teams['Home'+_country], ag)
-                    #self.teams[home_team_name].simplify()
-                    #self.teams[away_team_name].simplify()
-        self.save()
+                    if league in self.domestic_leagues:
+                        self.teams[league+'Home'].scored_against(self.teams[league+'Away'], hg)
+                        self.teams[league+'Away'].scored_against(self.teams[league+'Home'], ag)
 
+        self.save()
 
 
 class Team(object):
