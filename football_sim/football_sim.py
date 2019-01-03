@@ -22,6 +22,36 @@ def get_data(urls):
     return all_data
 
 
+def get_data_538():
+    all_data = dict()
+    domestic_leagues = ['French Ligue 1', 'Barclays Premier League',
+                        'Spanish Primera Division', 'Italy Serie A', 'German Bundesliga']
+    eu_leagues = ['UEFA Champions League', 'UEFA Europa League']
+    f = lambda x: "".join([y[0] for y in x.upper().split()])
+
+    df = pd.read_csv('https://projects.fivethirtyeight.com/soccer-api/club/spi_matches.csv')
+    df = df.rename(
+        columns={'team1': 'HomeTeam', 'team2': 'AwayTeam', 'score1': 'FTHG', 'score2': 'FTAG', 'league': 'League'})
+    df = df.dropna()
+    df['FTAG'] = df['FTAG'].astype(int)
+    df['FTHG'] = df['FTHG'].astype(int)
+    df['Date'] = pd.to_datetime(df['date'])
+    df = df[['Date', 'League', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'xg1', 'xg2', 'nsxg1',
+             'nsxg2']]
+    ind = df['League'].apply(lambda x: x in domestic_leagues)
+    ind = ind & (df['Date'] > pd.to_datetime('2018-07-01'))
+    df = df.loc[ind]
+
+    df['League'] = df['League'].apply(f)
+
+    leagues = df['League'].unique()
+
+    for _league in leagues:
+        ind = df['League'] == _league
+        all_data[_league] = df.loc[ind].copy()
+
+    return all_data
+
 def add_match(data, home, home_goals, away, away_goals,the_date=pd.to_datetime('today')):
     if data.index.shape[0]>0:
         max_ind = data.index.max()
