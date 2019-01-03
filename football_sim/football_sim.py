@@ -109,6 +109,7 @@ class Calibrator:
         df['FTAG'] = df['FTAG'].astype(int)
         df['FTHG'] = df['FTHG'].astype(int)
         df['Date'] = pd.to_datetime(df['date'])
+        df.to_csv('spi_matches.csv', index=False)
         df = df[['Date', 'League', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'xg1', 'xg2', 'nsxg1',
                  'nsxg2']]
         ind = (df['Date'] > pd.to_datetime('2018-07-01'))
@@ -139,6 +140,7 @@ class Calibrator:
         self._teams_created = True
 
     def process_data(self,update_params=True):
+        self.download_all_data()
         if not self._teams_created:
             self.create_all_teams()
         ind = self.raw_data['League'].apply(lambda x: x in self.domestic_leagues + self.eu_leagues)
