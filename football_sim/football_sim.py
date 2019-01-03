@@ -116,11 +116,12 @@ class Calibrator:
         df['League'] = df['League'].apply(f)
         self.raw_data = df
 
-    def get_current_results(self,league):
+    def get_current_results(self, league):
         if self.raw_data is None:
             self.download_all_data()
-        ind = self.raw_data['League'] == 'BPL'
+        ind = self.raw_data['League'] == league
         return self.raw_data.loc[ind]
+
     def create_all_teams(self):
         if self.raw_data is None:
             self.download_all_data()
@@ -371,8 +372,6 @@ class Season:
             p_cl[2] = 100 * (place_if_away == place).sum() / place_if_away.shape[0]
             p_cl[3] = 100 * (place_if_draw == place).sum() / place_if_draw.shape[0]
 
-
-
         if show_plot:
             fig, ax = plt.subplots(1, 1)
             _width = 0.2
@@ -505,9 +504,10 @@ class Season:
         team_names = []
         lmbd = []
         tau = []
-
+        current_points = []
         for _i in self.inv_team_id:
             team_name = self.inv_team_id[_i]
+            current_points.append(self.current_points[team_name])
             team_names.append(team_name)
             _l, _t = self.teams[team_name].means()
             lmbd.append(_l)
@@ -515,7 +515,8 @@ class Season:
         tau = np.array(tau).round(2)
         lmbd = np.array(lmbd).round(2)
 
-        df = pd.DataFrame({'Points (mean)': average_points,
+        df = pd.DataFrame({'Points (current)': current_points,
+                            'Points (mean)': average_points,
                            'Points (high)': points_up.astype(int),
                            'Points (low)': points_down.astype(int),
                            'Place (high)': place_up.astype(int),
@@ -530,7 +531,7 @@ class Season:
                            'Deff': tau},
                           index=team_names)
         df = df.sort_values(by='Points (mean)', ascending=False)
-        cols = ['Points (mean)', 'Points (low)', 'Points (high)', 'Place (low)', 'Place (high)', 'Win', 'CL', 'Off',
+        cols = ['Points (current)','Points (mean)', 'Points (low)', 'Points (high)', 'Place (low)', 'Place (high)', 'Win', 'CL', 'Off',
                 'Deff', 'Degr']
         return df[cols]
 
