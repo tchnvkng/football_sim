@@ -9,17 +9,6 @@ import json
 import time
 
 plt.rcParams['figure.figsize']=[16,9]
-def get_data(urls):
-    all_data = dict()
-
-    for country in urls:
-        all_data[country] = pd.read_csv(urls[country], usecols=['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG'])
-        all_data[country]['Date']=pd.to_datetime(all_data[country]['Date'])
-        all_data[country] = all_data[country].dropna()
-        all_data[country]['FTHG'] =all_data[country]['FTHG'].astype(int)
-        all_data[country]['FTAG'] = all_data[country]['FTAG'].astype(int)
-
-    return all_data
 
 
 def get_data_538():
@@ -60,126 +49,6 @@ def add_match(data, home, home_goals, away, away_goals,the_date=pd.to_datetime('
     a = pd.DataFrame({'Date': the_date, 'HomeTeam': home, 'AwayTeam': away, 'FTHG': home_goals, 'FTAG': away_goals}, index=[max_ind + 1])
     a = a[['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG']]
     return data.append(a)
-
-
-def request_data(req_str):
-    success = False
-    while not success:
-        connection = http.client.HTTPConnection('api.football-data.org')
-        headers = {'X-Auth-Token': '4ba22c664da84bd4a8d6fe0cf2e9f312', 'X-Response-Control': 'minified'}
-        connection.request('GET', req_str, None, headers)
-        response = json.loads(connection.getresponse().read().decode())
-        if type(response) == dict:
-            if 'error' in list(response.keys()):
-                print(response['error'])
-                print('waiting 10 seconds')
-                time.sleep(10)
-            else:
-                success = True
-        else:
-            success = True
-
-    return response
-
-
-class CompetitionResults:
-    def __init__(self, competition_id,redo=False):
-        self.id = competition_id
-        self.file_name = 'competition_{}.pkl'.format(self.id)
-        req_str = '/v1/competitions/{}'.format(self.id)
-        response = request_data(req_str)
-        self.name = response['caption']
-        self.short_name = response['league']
-        self.current_match_day = response['currentMatchday']
-        self.number_of_match_days = response['numberOfMatchdays']
-        self.number_of_teams = response['numberOfTeams']
-        self.number_of_games = response['numberOfGames']
-        self.last_updated = response['lastUpdated']
-        self.fixtures = dict()
-        if redo and os.path.isfile(self.file_name):
-            os.remove(self.file_name)
-
-        if os.path.isfile(self.file_name):
-            print('file exists, loading')
-            self.load()
-        else:
-            req_str = '/v1/competitions/{}/fixtures'.format(self.id)
-            self.fixture_list = request_data(req_str)['fixtures']
-            for x in self.fixture_list:
-                _f = Fixture(x)
-                self.fixtures[_f.id] = _f
-            self.save()
-        self.update_fixtures()
-
-    def update_fixture_list(self):
-        req_str = '/v1/competitions/{}/fixtures'.format(self.id)
-        self.fixture_list = request_data(req_str)['fixtures']
-        self.update_fixtures()
-
-    def update_fixtures(self):
-        for _id in self.fixtures:
-            _f = self.fixtures[_id]
-            if (_f.status != 'FINISHED') and (_f.date <= pd.to_datetime('today')):
-                _f.update()
-        self.save()
-
-    def load(self):
-        with open(self.file_name, 'rb') as input:
-            self.fixtures = pickle.load(input)
-            self.fixture_list = pickle.load(input)
-
-    def save(self):
-        if os.path.isfile(self.file_name):
-            os.remove(self.file_name)
-
-        with open(self.file_name, 'wb') as output:
-            pickle.dump(self.fixtures, output, pickle.HIGHEST_PROTOCOL)
-            pickle.dump(self.fixture_list, output, pickle.HIGHEST_PROTOCOL)
-
-    def make_df(self):
-        data = pd.DataFrame()
-        for _id in self.fixtures:
-            _f = self.fixtures[_id]
-            if _f.status == 'FINISHED':
-                data = add_match(data, _f.home_team_name, _f.home_goals, _f.away_team_name, _f.away_goals, the_date=_f.date)
-        return data
-
-
-
-class Fixture:
-    def __init__(self,details):
-        self.id = None
-        self.competition_id = None
-        self.date = None
-        self.status = None
-        self.match_day = None
-        self.home_team_name = None
-        self.home_team_id = None
-        self.away_team_name = None
-        self.away_team_id = None
-        self.home_goals = None
-        self.away_goals = None
-        self.all = None
-        self.process_details(details)
-
-    def process_details(self,details):
-        self.id = details['id']
-        self.competition_id = details['competitionId']
-        self.date = pd.to_datetime(details['date'])
-        self.status = details['status']
-        self.match_day = details['matchday']
-        self.home_team_name = details['homeTeamName']
-        self.home_team_id = details['homeTeamId']
-        self.away_team_name = details['awayTeamName']
-        self.away_team_id = details['awayTeamId']
-        self.home_goals = details['result']['goalsHomeTeam']
-        self.away_goals = details['result']['goalsAwayTeam']
-        self.all = details
-
-    def update(self):
-        req='/v1/fixtures/{}'.format(self.id)
-        updated_result = request_data(req)['fixture']
-        self.process_details(updated_result)
 
 
 class Calibrator():
@@ -247,32 +116,6 @@ class Calibrator():
                     #self.teams[away_team_name].simplify()
         self.save()
 
-
-def calibrate(teams, all_data):
-    for _country in all_data:
-        _data = all_data[_country]
-        for index, row in _data.iterrows():
-            home_team = teams[row['HomeTeam']]
-            away_team = teams[row['AwayTeam']]
-            hg = row['FTHG']
-            ag = row['FTAG']
-            if not (np.isnan(hg) or np.isnan(ag)):
-                home_team.scored_against(away_team, hg)
-                away_team.scored_against(home_team, ag)
-                home_team.simplify()
-                away_team.simplify()
-    return teams
-
-
-def create_teams(all_data):
-    teams = dict()
-    all_team_names = dict()
-    for _country in all_data:
-        all_team_names[_country] = set(all_data[_country]['HomeTeam']).union(set(all_data[_country]['AwayTeam']))
-        _team_names = all_team_names[_country]
-        for _team_name in _team_names:
-            teams[_team_name] = Team(name=_team_name, country=_country)
-    return teams
 
 
 class Team(object):
