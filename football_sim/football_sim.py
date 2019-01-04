@@ -11,35 +11,13 @@ import time
 plt.rcParams['figure.figsize']=[16,9]
 
 
-def get_data_538():
-    all_data = dict()
-    domestic_leagues = ['French Ligue 1', 'Barclays Premier League',
-                        'Spanish Primera Division', 'Italy Serie A', 'German Bundesliga']
-    eu_leagues = ['UEFA Champions League', 'UEFA Europa League']
-    f = lambda x: "".join([y[0] for y in x.upper().split()])
+class Settings:
+    def __init__(self):
+        self.domestic_leagues = ['FL1', 'BPL', 'SPD', 'ISA', 'GB', 'DE']
+        self.eu_leagues = ['UCL', 'UEL']
 
-    df = pd.read_csv('https://projects.fivethirtyeight.com/soccer-api/club/spi_matches.csv')
-    df = df.rename(
-        columns={'team1': 'HomeTeam', 'team2': 'AwayTeam', 'score1': 'FTHG', 'score2': 'FTAG', 'league': 'League'})
-    df = df.dropna()
-    df['FTAG'] = df['FTAG'].astype(int)
-    df['FTHG'] = df['FTHG'].astype(int)
-    df['Date'] = pd.to_datetime(df['date'])
-    df = df[['Date', 'League', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'xg1', 'xg2', 'nsxg1',
-             'nsxg2']]
-    ind = df['League'].apply(lambda x: x in domestic_leagues)
-    ind = ind & (df['Date'] > pd.to_datetime('2018-07-01'))
-    df = df.loc[ind]
 
-    df['League'] = df['League'].apply(f)
-
-    leagues = df['League'].unique()
-
-    for _league in leagues:
-        ind = df['League'] == _league
-        all_data[_league] = df.loc[ind].copy()
-
-    return all_data
+settings=Settings()
 
 
 def add_match(data, home, home_goals, away, away_goals,the_date=pd.to_datetime('today')):
@@ -52,6 +30,33 @@ def add_match(data, home, home_goals, away, away_goals,the_date=pd.to_datetime('
     return data.append(a)
 
 
+class Fixture:
+    def __init__(self, row):
+        self.domestic_leagues = settings.domestic_leagues
+        self.eu_leagues = settings.eu_leagues
+        self.league = row['League']
+        self.home_team_name = row['HomeTeam']
+        self.away_team_name = row['AwayTeam']
+        self.league_team_of_home_team = None
+        self.league_team_of_away_team = None
+        self.league_home_team = None
+        self.league_away_team = None
+        self.home_team = None
+        self.away_team = None
+        self.date = row['Date']
+        self.home_goals = row['FTHG']
+        self.away_goals = row['FTAG']
+        self.id = ('_'.join([self.league, self.date.strftime('%Y-%m-%d'), self.home_team_name, self.away_team_name])).replace(' ','').lower()
+
+    def set_teams(self, team_dict):
+        self.home_team = team_dict[self.home_team_name]
+        self.away_team = team_dict[self.away_team_name]
+        self.league_team_of_home_team = team_dict[self.home_team.country]
+        self.league_team_of_away_team = team_dict[self.away_team.country]
+        self.league_home_team = team_dict[self.home_team.country+'Home']
+        self.league_away_team = team_dict[self.away_team.country+'Away']
+
+
 class Calibrator:
     def __init__(self, file_name, old_teams=dict(), redo=False):
         self.file_name = file_name
@@ -59,9 +64,9 @@ class Calibrator:
         self.old_teams=old_teams
         self.raw_data = None
         self._teams_created = False
-        self.domestic_leagues = ['FL1', 'BPL', 'SPD', 'ISA', 'GB', 'DE']
-        self.eu_leagues = ['UCL', 'UEL']
-        self.processed_matches = []
+        self.domestic_leagues = settings.domestic_leagues
+        self.eu_leagues = settings.eu_leagues
+        self.processed_matches = dict()
         if redo:
             print('Force recalibrate')
         if os.path.isfile(file_name):
@@ -139,33 +144,28 @@ class Calibrator:
             self.create_team(away_team_name, league)
         self._teams_created = True
 
-    def process_data(self,update_params=True):
+    def process_data(self,update_params=True,verbose=False):
         self.download_all_data()
         if not self._teams_created:
             self.create_all_teams()
         ind = self.raw_data['League'].apply(lambda x: x in self.domestic_leagues + self.eu_leagues)
         for index, row in self.raw_data.loc[ind].iterrows():
-            league = row['League']
-            if league in self.domestic_leagues:
-                home_team_name = row['HomeTeam']
-                away_team_name = row['AwayTeam']
-            elif league in self.eu_leagues and row['HomeTeam'] in self.teams and row['AwayTeam'] in self.teams:
-                home_team_name=self.teams[row['HomeTeam']].country
-                away_team_name = self.teams[row['AwayTeam']].country
-
-            date = row['Date'].strftime('%Y-%m-%d')
-            hg = row['FTHG']
-            ag = row['FTAG']
-            this_match = date+home_team_name+away_team_name
-            if this_match not in self.processed_matches and update_params:
-                if not (np.isnan(hg) or np.isnan(ag)):
-                    print((date, home_team_name, away_team_name, hg, ag))
-                    self.processed_matches.append(this_match)
-                    self.teams[home_team_name].scored_against(self.teams[away_team_name], hg)
-                    self.teams[away_team_name].scored_against(self.teams[home_team_name], ag)
-                    if league in self.domestic_leagues:
-                        self.teams[league+'Home'].scored_against(self.teams[league+'Away'], hg)
-                        self.teams[league+'Away'].scored_against(self.teams[league+'Home'], ag)
+            fixture = Fixture(row)
+            if fixture.id not in self.processed_matches and update_params:
+                if not (np.isnan(fixture.home_goals) or np.isnan(fixture.away_goals)):
+                    if verbose:
+                        print((fixture.date, fixture.home_team_name, fixture.away_team_name, fixture.home_goals, fixture.away_goals))
+                    if fixture.league in self.domestic_leagues:
+                        fixture.set_teams(self.teams)
+                        fixture.home_team.scored_against(fixture.away_team,fixture.home_goals)
+                        fixture.away_team.scored_against(fixture.home_team, fixture.away_goals)
+                        fixture.league_home_team.scored_against(fixture.league_away_team, fixture.home_goals)
+                        fixture.league_away_team.scored_against(fixture.league_home_team, fixture.away_goals)
+                    elif fixture.league in self.eu_leagues and fixture.home_team_name in self.teams and fixture.away_team_name in self.teams:
+                        fixture.set_teams(self.teams)
+                        fixture.league_team_of_home_team.scored_against(fixture.league_team_of_away_team, fixture.home_goals)
+                        fixture.league_team_of_away_team.scored_against(fixture.league_team_of_home_team, fixture.away_goals)
+                    self.processed_matches[fixture.id] = fixture
 
         self.save()
 
@@ -251,10 +251,10 @@ class Team(object):
         return self.p.dot(self.lmbd_set), self.q.dot(self.tau_set)
 
     def scored_against(self, other, k):
-        lmb_plus_tau = self.lmbd_set*other.tau_set[:, np.newaxis]
-        new_p = ((np.exp(-lmb_plus_tau) * (lmb_plus_tau ** k)).T * other.q).sum(axis=1) * self.p
+        lmb_times_tau = self.lmbd_set*other.tau_set[:, np.newaxis]
+        new_p = ((np.exp(-lmb_times_tau) * (lmb_times_tau ** k)).T * other.q).sum(axis=1) * self.p
         self.p = new_p / new_p.sum()
-        new_q = ((np.exp(-lmb_plus_tau) * (lmb_plus_tau ** k)) * self.p).sum(axis=1) * other.q
+        new_q = ((np.exp(-lmb_times_tau) * (lmb_times_tau ** k)) * self.p).sum(axis=1) * other.q
         other.q = new_q / new_q.sum()
 
 
