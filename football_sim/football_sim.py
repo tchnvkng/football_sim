@@ -13,7 +13,7 @@ plt.rcParams['figure.figsize']=[16,9]
 
 class Settings:
     def __init__(self):
-        self.domestic_leagues = ['FL1', 'BPL', 'SPD', 'ISA', 'GB', 'DE']
+        self.domestic_leagues = ['FL1', 'BPL', 'SPD', 'ISA', 'GB', 'DE', 'PL','RPL']
         self.eu_leagues = ['UCL', 'UEL']
 
 
@@ -426,7 +426,8 @@ class Season:
             ax.legend()
             ax.set_title(ref_team)
             fig.set_size_inches(16, 9)
-        return p_cl
+            return p_cl, fig
+        return p_cl, None
 
     def process_simulation(self):
         n_scenarios = self.simulated_home_goals.shape[1]
