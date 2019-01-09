@@ -63,6 +63,8 @@ class Calibrator:
         self.teams = dict()
         self.old_teams=old_teams
         self.raw_data = None
+        self.league_start = pd.to_datetime('2018-07-01')
+        self.calibration_start = pd.to_datetime('2018-03-01')
         self._teams_created = False
         self.domestic_leagues = settings.domestic_leagues
         self.eu_leagues = settings.eu_leagues
@@ -117,7 +119,7 @@ class Calibrator:
         df.to_csv('spi_matches.csv', index=False)
         df = df[['Date', 'League', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'xg1', 'xg2', 'nsxg1',
                  'nsxg2']]
-        ind = (df['Date'] > pd.to_datetime('2018-07-01'))
+        ind = (df['Date'] > self.calibration_start)
         df = df.loc[ind]
         df['League'] = df['League'].apply(f)
         self.raw_data = df
@@ -126,7 +128,14 @@ class Calibrator:
         if self.raw_data is None:
             self.download_all_data()
         ind = self.raw_data['League'] == league
+        ind = ind & (self.raw_data['Date'] > self.league_start)
         return self.raw_data.loc[ind]
+
+    def get_teams_for_league(self, _league):
+        ind = self.raw_data['League'] == _league
+        ind = ind & (self.raw_data['Date'] >= self.league_start)
+        _team_names = np.unique(self.raw_data.loc[ind, ['HomeTeam', 'AwayTeam']].values)
+        return {x: self.teams[x] for x in _team_names}
 
     def create_all_teams(self):
         if self.raw_data is None:
@@ -136,6 +145,7 @@ class Calibrator:
             self.create_team(_league+'Home', _league+'0')
             self.create_team(_league + 'Away', _league + '0')
         ind = self.raw_data['League'].apply(lambda x: x in self.domestic_leagues)
+        ind = ind & (self.raw_data['Date'] > self.calibration_start)
         for _, row in self.raw_data.loc[ind, ['League', 'HomeTeam', 'AwayTeam']].iterrows():
             home_team_name = row['HomeTeam']
             away_team_name = row['AwayTeam']
