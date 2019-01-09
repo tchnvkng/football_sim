@@ -15,7 +15,7 @@ lH, pH = calibrator.teams[country + 'Home'].means()
 lA, pA = calibrator.teams[country + 'Away'].means()
 home_advantage = np.array([lH - lA, pH / pA])
 print(home_advantage)
-Teams = {x: teams[x] for x in teams if teams[x].country == country}
+Teams = calibrator.get_teams_for_league(country)
 League = Season(Teams, home_advantage=home_advantage, nr_cl=4)
 League.process_current_results(calibrator.get_current_results(country))
 League.simulate_season(n_scenarios=100000)
