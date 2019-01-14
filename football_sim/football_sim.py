@@ -154,7 +154,7 @@ class Calibrator:
             self.create_team(away_team_name, league)
         self._teams_created = True
 
-    def process_data(self,update_params=True,verbose=False):
+    def process_data(self, update_params=True, verbose=False):
         self.download_all_data()
         if not self._teams_created:
             self.create_all_teams()
