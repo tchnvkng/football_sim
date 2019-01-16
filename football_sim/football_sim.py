@@ -13,7 +13,7 @@ plt.rcParams['figure.figsize']=[16,9]
 
 class Settings:
     def __init__(self):
-        self.domestic_leagues = ['FL1', 'BPL', 'SPD', 'ISA', 'GB', 'DE', 'PL','RPL']
+        self.domestic_leagues = ['FL1', 'BPL', 'SPD', 'ISA', 'GB', 'DE', 'PL','RPL','ELC']
         self.eu_leagues = ['UCL', 'UEL']
 
 
