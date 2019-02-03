@@ -236,6 +236,7 @@ class Team(object):
 
     def vs(self, other_team, n=int(1e4),home_advantage=np.array([0,1])):
         lH = (np.random.choice(self.lmbd_set, size=n, p=self.p)+home_advantage[0])*np.random.choice(other_team.tau_set, size=n, p=other_team.q)
+        lH = np.maximum(lH,0)
         gH = np.random.poisson(lH)
         lA = np.random.choice(other_team.lmbd_set, size=n, p=other_team.p)*np.random.choice(self.tau_set, size=n, p=self.q)*home_advantage[1]
         lA=np.maximum(lA,0)
@@ -495,26 +496,25 @@ class Season:
         self.goals_against_per_team = goals_against_per_team
         self.simulation_processed = True
 
-    def season_report(self):
+    def season_report(self, ind=None):
         if not self.simulation_done:
             print('simulation not yet done, simulating')
             self.simulate_season()
         if not self.simulation_processed:
             print('simulation not yet processed, processing')
             self.process_simulation()
-
-        average_points = self.points_per_team.mean(axis=1).round(1)
-        average_goals = self.goals_per_team.mean(axis=1).round(1)
-        average_goals_against = self.goals_against_per_team.mean(axis=1).round(1)
-        p_win = (100 * (self.place_per_team == 1).sum(axis=1) / self.place_per_team.shape[1]).round(2)
-        p_cl = (100 * (self.place_per_team <= self.nr_cl).sum(axis=1) / self.place_per_team.shape[1]).round(2)
-        p_degr = (
-                100 * (self.place_per_team > self.nr_teams - self.nr_degr).sum(axis=1) / self.place_per_team.shape[
-            1]).round(2)
-        points_up = np.percentile(self.points_per_team, 95, axis=1).round(0)
-        points_down = np.percentile(self.points_per_team, 5, axis=1).round(0)
-        place_up = np.percentile(self.place_per_team, 5, axis=1).round(0)
-        place_down = np.percentile(self.place_per_team, 95, axis=1).round(0)
+        if ind is None:
+            ind = np.ones(self.points_per_team.shape[1]).astype(bool)
+        average_points = self.points_per_team[:,ind].mean(axis=1).round(1)
+        average_goals = self.goals_per_team[:,ind].mean(axis=1).round(1)
+        average_goals_against = self.goals_against_per_team[:,ind].mean(axis=1).round(1)
+        p_win = (100 * (self.place_per_team[:,ind] == 1).sum(axis=1) / ind.sum()).round(2)
+        p_cl = (100 * (self.place_per_team[:,ind] <= self.nr_cl).sum(axis=1) / ind.sum()).round(2)
+        p_degr = (100 * (self.place_per_team[:,ind] > self.nr_teams - self.nr_degr).sum(axis=1) / ind.sum()).round(2)
+        points_up = np.percentile(self.points_per_team[:,ind], 95, axis=1).round(0)
+        points_down = np.percentile(self.points_per_team[:,ind], 5, axis=1).round(0)
+        place_up = np.percentile(self.place_per_team[:,ind], 5, axis=1).round(0)
+        place_down = np.percentile(self.place_per_team[:,ind], 95, axis=1).round(0)
         team_names = []
         lmbd = []
         tau = []
