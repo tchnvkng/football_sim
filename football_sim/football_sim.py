@@ -337,22 +337,19 @@ class Season:
 
     def simulate_season(self, n_scenarios=10000):
         nr_matches_to_sim = len(self.matches_to_sim)
-        self.match_id = dict()
-        i = 0
         self.simulated_home_goals = np.zeros([nr_matches_to_sim, n_scenarios])
         self.simulated_away_goals = np.zeros([nr_matches_to_sim, n_scenarios])
-        for match in self.matches_to_sim:
-            self.match_id[match] = i
+        for i,match in enumerate(self.matches_to_sim):
+            self.matches_to_sim[match]['id'] = i
             home_team = self.teams[self.matches_to_sim[match]['Home']]
             away_team = self.teams[self.matches_to_sim[match]['Away']]
             gH, gA, _ = home_team.vs(away_team, n=n_scenarios,home_advantage=self.home_advantage)
             self.simulated_home_goals[i, :] = gH
             self.simulated_away_goals[i, :] = gA
-            i += 1
         self.simulation_done = True
         self.simulation_processed = False
 
-    def what_if(self, match, ref_team='Man United',show_plot=True,place=4,or_better=True):
+    def what_if(self, match, ref_team,show_plot=True,place=4,or_better=True):
         if not self.simulation_done:
             print('simulation not yet done, simulating')
             self.simulate_season()
@@ -360,17 +357,16 @@ class Season:
             print('simulation not yet processed, processing')
             self.process_simulation()
 
-        match_id = self.match_id[match]
-        _details = self.matches_to_sim[match]
-        _home = _details['Home']
-        _away = _details['Away']
-
+        match_id = match['id']
+        _home = match['Home']
+        _away = match['Away']
+        ref_team_name = ref_team.name
         home_goals = self.simulated_home_goals[match_id, :]
         away_goals = self.simulated_away_goals[match_id, :]
         home_won = home_goals > away_goals
         away_won = home_goals < away_goals
         draw = home_goals == away_goals
-        ref_team_id = self.team_id[ref_team]
+        ref_team_id = self.team_id[ref_team_name]
         place_if_home = self.place_per_team[ref_team_id, home_won]
         place_if_away = self.place_per_team[ref_team_id, away_won]
         place_if_draw = self.place_per_team[ref_team_id, draw]
@@ -436,7 +432,7 @@ class Season:
             ax.set_xticks(xx0)
             ax.set_xticklabels(_label)
             ax.legend()
-            ax.set_title(ref_team)
+            ax.set_title(ref_team_name)
             fig.set_size_inches(16, 9)
             return p_cl, fig
         return p_cl, None
@@ -459,8 +455,8 @@ class Season:
             _home = _details['Home']
             _home_id = self.team_id[_home]
             _away = _details['Away']
+            match_id = _details['id']
             _away_id = self.team_id[_away]
-            match_id = self.match_id[_match]
             home_goals = self.simulated_home_goals[match_id]
             away_goals = self.simulated_away_goals[match_id]
             goals_per_team[_home_id, :] += home_goals
@@ -549,13 +545,14 @@ class Season:
                 'Deff', 'Degr']
         return df[cols]
 
-    def team_report(self, team_name):
+    def team_report(self, team):
         if not self.simulation_done:
             print('simulation not yet done, simulating')
             self.simulate_season()
         if not self.simulation_processed:
             print('simulation not yet processed, processing')
             self.process_simulation()
+        team_name = team.name
         fig, ax = plt.subplots(2, 2)
         x, y = p_plot(self.place_per_team[self.team_id[team_name], :])
         ax[0, 0].bar(x, y)
