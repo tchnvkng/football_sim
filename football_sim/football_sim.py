@@ -8,20 +8,20 @@ import http.client
 import json
 import time
 
-plt.rcParams['figure.figsize']=[16,9]
+plt.rcParams['figure.figsize'] = [16, 9]
 
 
 class Settings:
     def __init__(self):
-        self.domestic_leagues = ['FL1', 'BPL', 'SPD', 'ISA', 'GB', 'DE', 'PL','RPL','ELC']
+        self.domestic_leagues = ['FL1', 'BPL', 'SPD', 'ISA', 'GB', 'DE', 'PL', 'RPL', 'ELC']
         self.eu_leagues = ['UCL', 'UEL']
 
 
-settings=Settings()
+settings = Settings()
 
 
-def add_match(data, home, home_goals, away, away_goals,the_date=pd.to_datetime('today')):
-    if data.index.shape[0]>0:
+def add_match(data, home, home_goals, away, away_goals, the_date=pd.to_datetime('today')):
+    if data.index.shape[0] > 0:
         max_ind = data.index.max()
     else:
         max_ind = 0
@@ -46,22 +46,22 @@ class Fixture:
         self.date = row['Date']
         self.home_goals = row['FTHG']
         self.away_goals = row['FTAG']
-        self.id = ('_'.join([self.league, self.date.strftime('%Y-%m-%d'), self.home_team_name, self.away_team_name])).replace(' ','').lower()
+        self.id = ('_'.join([self.league, self.date.strftime('%Y-%m-%d'), self.home_team_name, self.away_team_name])).replace(' ', '').lower()
 
     def set_teams(self, team_dict):
         self.home_team = team_dict[self.home_team_name]
         self.away_team = team_dict[self.away_team_name]
         self.league_team_of_home_team = team_dict[self.home_team.country]
         self.league_team_of_away_team = team_dict[self.away_team.country]
-        self.league_home_team = team_dict[self.home_team.country+'Home']
-        self.league_away_team = team_dict[self.away_team.country+'Away']
+        self.league_home_team = team_dict[self.home_team.country + 'Home']
+        self.league_away_team = team_dict[self.away_team.country + 'Away']
 
 
 class Calibrator:
     def __init__(self, file_name, old_teams=dict(), redo=False):
         self.file_name = file_name
         self.teams = dict()
-        self.old_teams=old_teams
+        self.old_teams = old_teams
         self.raw_data = None
         self.league_start = pd.to_datetime('2018-07-01')
         self.calibration_start = pd.to_datetime('2018-07-01')
@@ -98,7 +98,7 @@ class Calibrator:
             pickle.dump(self.processed_matches, output, pickle.HIGHEST_PROTOCOL)
             pickle.dump(self.raw_data, output, pickle.HIGHEST_PROTOCOL)
 
-    def create_team(self,team_name,country):
+    def create_team(self, team_name, country):
         if team_name not in self.teams:
             if team_name in self.old_teams:
                 self.teams[team_name] = copy.deepcopy(self.old_teams[team_name])
@@ -119,7 +119,7 @@ class Calibrator:
         df.to_csv('spi_matches.csv', index=False)
         df = df[['Date', 'League', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'xg1', 'xg2', 'nsxg1',
                  'nsxg2']]
-        #ind = (df['Date'] > self.calibration_start)
+        # ind = (df['Date'] > self.calibration_start)
         df = df.loc[ind]
         df['League'] = df['League'].apply(f)
         self.raw_data = df
@@ -142,7 +142,7 @@ class Calibrator:
             self.download_all_data()
         for _league in self.domestic_leagues:
             self.create_team(_league, 'UEFA')
-            self.create_team(_league+'Home', _league+'0')
+            self.create_team(_league + 'Home', _league + '0')
             self.create_team(_league + 'Away', _league + '0')
         ind = self.raw_data['League'].apply(lambda x: x in self.domestic_leagues)
         # ind = ind & (self.raw_data['Date'] > self.calibration_start)
@@ -168,7 +168,7 @@ class Calibrator:
                         print((fixture.date, fixture.home_team_name, fixture.away_team_name, fixture.home_goals, fixture.away_goals))
                     if fixture.league in self.domestic_leagues:
                         fixture.set_teams(self.teams)
-                        fixture.home_team.scored_against(fixture.away_team,fixture.home_goals)
+                        fixture.home_team.scored_against(fixture.away_team, fixture.home_goals)
                         fixture.away_team.scored_against(fixture.home_team, fixture.away_goals)
                         fixture.league_home_team.scored_against(fixture.league_away_team, fixture.home_goals)
                         fixture.league_away_team.scored_against(fixture.league_home_team, fixture.away_goals)
@@ -205,9 +205,9 @@ class Team(object):
         self.p = self.p / self.p.sum()
         self.q = self.q / self.q.sum()
 
-    def forget(self,p_mix=0.5):
-        self.p=(1-p_mix)*self.p+p_mix/self.p.shape[0]
-        self.q=(1-p_mix)*self.q+p_mix/self.q.shape[0]
+    def forget(self, p_mix=0.5):
+        self.p = (1 - p_mix) * self.p + p_mix / self.p.shape[0]
+        self.q = (1 - p_mix) * self.q + p_mix / self.q.shape[0]
         self.normalize()
 
     def outcomes_vs(self, other_team, n_scenarios=int(1e5), home_advantage=np.array([0, 1])):
@@ -231,15 +231,15 @@ class Team(object):
         plt.legend()
         plt.xlim(-0.5, x[p > 0.5].max() + 0.5)
         plt.grid()
-        gmean=g.mean(axis=0)
-        plt.title('{} ({:.2f}) vs {} ({:.2f})'.format(self.name,gmean[0] ,other_team.name,gmean[1]))
+        gmean = g.mean(axis=0)
+        plt.title('{} ({:.2f}) vs {} ({:.2f})'.format(self.name, gmean[0], other_team.name, gmean[1]))
 
-    def vs(self, other_team, n=int(1e4),home_advantage=np.array([0,1])):
-        lH = (np.random.choice(self.lmbd_set, size=n, p=self.p)+home_advantage[0])*np.random.choice(other_team.tau_set, size=n, p=other_team.q)
-        lH = np.maximum(lH,0)
+    def vs(self, other_team, n=int(1e4), home_advantage=np.array([0, 1])):
+        lH = (np.random.choice(self.lmbd_set, size=n, p=self.p) + home_advantage[0]) * np.random.choice(other_team.tau_set, size=n, p=other_team.q)
+        lH = np.maximum(lH, 0)
         gH = np.random.poisson(lH)
-        lA = np.random.choice(other_team.lmbd_set, size=n, p=other_team.p)*np.random.choice(self.tau_set, size=n, p=self.q)*home_advantage[1]
-        lA=np.maximum(lA,0)
+        lA = np.random.choice(other_team.lmbd_set, size=n, p=other_team.p) * np.random.choice(self.tau_set, size=n, p=self.q) * home_advantage[1]
+        lA = np.maximum(lA, 0)
         gA = np.random.poisson(lA)
         match_des = self.name + ' vs ' + other_team.name
         return gH, gA, match_des
@@ -263,7 +263,7 @@ class Team(object):
         return self.p.dot(self.lmbd_set), self.q.dot(self.tau_set)
 
     def scored_against(self, other, k):
-        lmb_times_tau = self.lmbd_set*other.tau_set[:, np.newaxis]
+        lmb_times_tau = self.lmbd_set * other.tau_set[:, np.newaxis]
         new_p = ((np.exp(-lmb_times_tau) * (lmb_times_tau ** k)).T * other.q).sum(axis=1) * self.p
         self.p = new_p / new_p.sum()
         new_q = ((np.exp(-lmb_times_tau) * (lmb_times_tau ** k)) * self.p).sum(axis=1) * other.q
@@ -282,9 +282,9 @@ def p_plot(x):
 
 
 class Season:
-    def __init__(self, teams, nr_cl=4, nr_degr=3,home_advantage=np.array([0,0])):
+    def __init__(self, teams, nr_cl=4, nr_degr=3, home_advantage=np.array([0, 0])):
         self.teams = teams
-        self.home_advantage=home_advantage
+        self.home_advantage = home_advantage
         self.nr_cl = nr_cl
         self.nr_degr = nr_degr
         self.nr_teams = len(teams)
@@ -339,17 +339,17 @@ class Season:
         nr_matches_to_sim = len(self.matches_to_sim)
         self.simulated_home_goals = np.zeros([nr_matches_to_sim, n_scenarios])
         self.simulated_away_goals = np.zeros([nr_matches_to_sim, n_scenarios])
-        for i,match in enumerate(self.matches_to_sim):
+        for i, match in enumerate(self.matches_to_sim):
             self.matches_to_sim[match]['id'] = i
             home_team = self.teams[self.matches_to_sim[match]['Home']]
             away_team = self.teams[self.matches_to_sim[match]['Away']]
-            gH, gA, _ = home_team.vs(away_team, n=n_scenarios,home_advantage=self.home_advantage)
+            gH, gA, _ = home_team.vs(away_team, n=n_scenarios, home_advantage=self.home_advantage)
             self.simulated_home_goals[i, :] = gH
             self.simulated_away_goals[i, :] = gA
         self.simulation_done = True
         self.simulation_processed = False
 
-    def what_if(self, match, ref_team,show_plot=True,place=4,or_better=True):
+    def what_if(self, match, ref_team, show_plot=True, place=4, or_better=True):
         if not self.simulation_done:
             print('simulation not yet done, simulating')
             self.simulate_season()
@@ -370,7 +370,7 @@ class Season:
         place_if_home = self.place_per_team[ref_team_id, home_won]
         place_if_away = self.place_per_team[ref_team_id, away_won]
         place_if_draw = self.place_per_team[ref_team_id, draw]
-        p_cl=np.zeros(4)
+        p_cl = np.zeros(4)
         if or_better:
             p_cl[0] = 100 * (self.place_per_team[ref_team_id] <= place).sum() / self.place_per_team[ref_team_id].shape[0]
             p_cl[1] = 100 * (place_if_home <= place).sum() / place_if_home.shape[0]
@@ -386,49 +386,48 @@ class Season:
             fig, ax = plt.subplots(1, 1)
             _width = 0.2
             x, y = p_plot(self.place_per_team[ref_team_id])
-            xx=np.zeros(x.shape[0]+1)
-            yy=np.zeros(y.shape[0]+1)
-            x_cl=x[-1]+1
-            xx[:-1]=x
-            xx[-1]=x_cl
-            yy[:-1]=y
-            yy[-1]=p_cl[0]
-            xx0=np.array(xx)
+            xx = np.zeros(x.shape[0] + 1)
+            yy = np.zeros(y.shape[0] + 1)
+            x_cl = x[-1] + 1
+            xx[:-1] = x
+            xx[-1] = x_cl
+            yy[:-1] = y
+            yy[-1] = p_cl[0]
+            xx0 = np.array(xx)
 
             ax.bar(xx - 1.5 * _width, yy, width=_width, label='Current. CL: {:0.2f}'.format(p_cl[0]))
 
-
             x, y = p_plot(place_if_home)
-            xx=np.zeros(x.shape[0]+1)
-            yy=np.zeros(y.shape[0]+1)
-            xx[:-1]=x
-            xx[-1]=x_cl
-            yy[:-1]=y
-            yy[-1]=p_cl[1]
+            xx = np.zeros(x.shape[0] + 1)
+            yy = np.zeros(y.shape[0] + 1)
+            xx[:-1] = x
+            xx[-1] = x_cl
+            yy[:-1] = y
+            yy[-1] = p_cl[1]
             ax.bar(xx - 0.5 * _width, yy, width=_width, label='{:s} Win. CL: {:0.2f}'.format(_home, p_cl[1]))
 
             x, y = p_plot(place_if_away)
-            xx=np.zeros(x.shape[0]+1)
-            yy=np.zeros(y.shape[0]+1)
-            xx[:-1]=x
-            xx[-1]=x_cl
-            yy[:-1]=y
-            yy[-1]=p_cl[2]
+            xx = np.zeros(x.shape[0] + 1)
+            yy = np.zeros(y.shape[0] + 1)
+            xx[:-1] = x
+            xx[-1] = x_cl
+            yy[:-1] = y
+            yy[-1] = p_cl[2]
             ax.bar(xx + 0.5 * _width, yy, width=_width, label='{:s} Win. CL: {:0.2f}'.format(_away, p_cl[2]))
 
             x, y = p_plot(place_if_draw)
-            xx=np.zeros(x.shape[0]+1)
-            yy=np.zeros(y.shape[0]+1)
-            xx[:-1]=x
-            xx[-1]=x_cl
-            yy[:-1]=y
-            yy[-1]=p_cl[3]
+            xx = np.zeros(x.shape[0] + 1)
+            yy = np.zeros(y.shape[0] + 1)
+            xx[:-1] = x
+            xx[-1] = x_cl
+            yy[:-1] = y
+            yy[-1] = p_cl[3]
             ax.bar(xx + 1.5 * _width, yy, width=_width, label='Draw. CL: {:0.2f}'.format(p_cl[3]))
             ax.grid(True)
-            _label=[]
+            _label = []
             for _x in xx0:
                 _label.append(str(int(_x)))
-            _label[-1]='CL'
+            _label[-1] = 'CL'
             ax.set_xticks(xx0)
             ax.set_xticklabels(_label)
             ax.legend()
@@ -501,16 +500,16 @@ class Season:
             self.process_simulation()
         if ind is None:
             ind = np.ones(self.points_per_team.shape[1]).astype(bool)
-        average_points = self.points_per_team[:,ind].mean(axis=1).round(1)
-        average_goals = self.goals_per_team[:,ind].mean(axis=1).round(1)
-        average_goals_against = self.goals_against_per_team[:,ind].mean(axis=1).round(1)
-        p_win = (100 * (self.place_per_team[:,ind] == 1).sum(axis=1) / ind.sum()).round(2)
-        p_cl = (100 * (self.place_per_team[:,ind] <= self.nr_cl).sum(axis=1) / ind.sum()).round(2)
-        p_degr = (100 * (self.place_per_team[:,ind] > self.nr_teams - self.nr_degr).sum(axis=1) / ind.sum()).round(2)
-        points_up = np.percentile(self.points_per_team[:,ind], 95, axis=1).round(0)
-        points_down = np.percentile(self.points_per_team[:,ind], 5, axis=1).round(0)
-        place_up = np.percentile(self.place_per_team[:,ind], 5, axis=1).round(0)
-        place_down = np.percentile(self.place_per_team[:,ind], 95, axis=1).round(0)
+        average_points = self.points_per_team[:, ind].mean(axis=1).round(1)
+        average_goals = self.goals_per_team[:, ind].mean(axis=1).round(1)
+        average_goals_against = self.goals_against_per_team[:, ind].mean(axis=1).round(1)
+        p_win = (100 * (self.place_per_team[:, ind] == 1).sum(axis=1) / ind.sum()).round(2)
+        p_cl = (100 * (self.place_per_team[:, ind] <= self.nr_cl).sum(axis=1) / ind.sum()).round(2)
+        p_degr = (100 * (self.place_per_team[:, ind] > self.nr_teams - self.nr_degr).sum(axis=1) / ind.sum()).round(2)
+        points_up = np.percentile(self.points_per_team[:, ind], 95, axis=1).round(0)
+        points_down = np.percentile(self.points_per_team[:, ind], 5, axis=1).round(0)
+        place_up = np.percentile(self.place_per_team[:, ind], 5, axis=1).round(0)
+        place_down = np.percentile(self.place_per_team[:, ind], 95, axis=1).round(0)
         team_names = []
         lmbd = []
         tau = []
@@ -526,7 +525,7 @@ class Season:
         lmbd = np.array(lmbd).round(2)
 
         df = pd.DataFrame({'Points (current)': current_points,
-                            'Points (mean)': average_points,
+                           'Points (mean)': average_points,
                            'Points (high)': points_up.astype(int),
                            'Points (low)': points_down.astype(int),
                            'Place (high)': place_up.astype(int),
@@ -541,9 +540,37 @@ class Season:
                            'Deff': tau},
                           index=team_names)
         df = df.sort_values(by='Points (mean)', ascending=False)
-        cols = ['Points (current)','Points (mean)', 'Points (low)', 'Points (high)', 'Place (low)', 'Place (high)', 'Win', 'CL', 'Off',
+        cols = ['Points (current)', 'Points (mean)', 'Points (low)', 'Points (high)', 'Place (low)', 'Place (high)', 'Win', 'CL', 'Off',
                 'Deff', 'Degr']
         return df[cols]
+
+    def probability_grid(self):
+        fig = plt.figure(1)
+        i_sort = (-self.points_per_team.mean(axis=1)).argsort()
+        T = np.zeros([self.nr_teams, self.nr_teams])
+        team_names = []
+        for name, i in self.team_id.items():
+            T[i, :] = np.bincount(self.place_per_team[i, :].astype(int) - 1, minlength=self.nr_teams)
+            T[i, :] = 100 * T[i, :] / T[i, :].sum()
+            team_names.append(name)
+        team_names = np.array(team_names)[i_sort]
+        T = T[i_sort, :]
+        plt.imshow(T, cmap='binary')
+        for i in range(self.nr_teams):
+            for j in range(self.nr_teams):
+                if (j == self.nr_cl) | (j == self.nr_teams - self.nr_degr-1):
+                    plt.axvline(x=j - 0.5, color='r', linewidth=1)
+                else:
+                    plt.axvline(x=j - 0.5, color='k', linewidth=1)
+                plt.axhline(y=j - 0.5, color='k', linewidth=1)
+                if T[i, j] >= 1:
+                    plt.text(i - 0.35, j + 0.1, '{:0.0f}%'.format(T[i, j]), color='green')
+
+        plt.colorbar()
+        plt.yticks(np.arange(self.nr_teams), team_names)
+        plt.xticks(np.arange(self.nr_teams), np.arange(self.nr_teams) + 1)
+        # plt.grid(True)
+        fig.set_size_inches(16, 12)
 
     def team_report(self, team):
         if not self.simulation_done:
@@ -577,4 +604,3 @@ class Season:
                 _j.grid(True)
 
         fig.set_size_inches(16, 9)
-
