@@ -111,24 +111,29 @@ class Calibrator:
         df = pd.read_csv('https://projects.fivethirtyeight.com/soccer-api/club/spi_matches.csv')
         df = df.rename(
             columns={'team1': 'HomeTeam', 'team2': 'AwayTeam', 'score1': 'FTHG', 'score2': 'FTAG', 'league': 'League'})
-        ind = ~(df['FTAG'].isnull() | df['FTHG'].isnull())
-        df = df.loc[ind]
+        ind = (df['FTAG'].isnull() | df['FTHG'].isnull())
+        df.loc[ind, 'FTAG']=-100
+        df.loc[ind, 'FTHG'] = -100
         df['FTAG'] = df['FTAG'].astype(int)
         df['FTHG'] = df['FTHG'].astype(int)
         df['Date'] = pd.to_datetime(df['date'])
         df.to_csv('spi_matches.csv', index=False)
         df = df[['Date', 'League', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'xg1', 'xg2', 'nsxg1',
                  'nsxg2']]
-        # ind = (df['Date'] > self.calibration_start)
+        ind = (df['Date'] > self.calibration_start)
         df = df.loc[ind]
         df['League'] = df['League'].apply(f)
         self.raw_data = df
 
-    def get_current_results(self, league):
+    def get_current_results(self, league, only_done=False):
         if self.raw_data is None:
             self.download_all_data()
         ind = self.raw_data['League'] == league
         ind = ind & (self.raw_data['Date'] > self.league_start)
+        if only_done:
+            ind = ind & (self.raw_data['FTAG'] >= 0)
+            ind = ind & (self.raw_data['FTHG'] >= 0)
+
         return self.raw_data.loc[ind]
 
     def get_teams_for_league(self, _league):
@@ -160,6 +165,8 @@ class Calibrator:
             self.create_all_teams()
         ind = self.raw_data['League'].apply(lambda x: x in self.domestic_leagues + self.eu_leagues)
         ind = ind & (self.raw_data['Date'] > self.calibration_start)
+        ind = ind & (self.raw_data['FTAG'] >= 0)
+        ind = ind & (self.raw_data['FTHG'] >= 0)
         for index, row in self.raw_data.loc[ind].iterrows():
             fixture = Fixture(row)
             if fixture.id not in self.processed_matches and update_params:
@@ -288,7 +295,7 @@ class Season:
         self.nr_cl = nr_cl
         self.nr_degr = nr_degr
         self.nr_teams = len(teams)
-        self.all_matches = {home + ' v ' + away: {'Done': False, 'Home': home, 'Away': away} for home in teams for away
+        self.all_matches = {home + ' v ' + away: {'Done': False, 'Home': home, 'Away': away,'Date': pd.Timestamp('today')} for home in teams for away
                             in teams if home != away}
         self.matches_to_sim = self.all_matches
         self.current_goals = dict()
@@ -318,21 +325,24 @@ class Season:
             match = home_team + ' v ' + away_team
             home_goals = row['FTHG']
             away_goals = row['FTAG']
-            if not (np.isnan(home_goals) or np.isnan(
-                    away_goals)) and home_team in self.teams and away_team in self.teams:
-                self.current_goals[home_team] += home_goals
-                self.current_goals[away_team] += away_goals
-                self.current_goals_against[home_team] += away_goals
-                self.current_goals_against[away_team] += home_goals
+            self.all_matches[match]['Date'] = row['Date']
+            if (home_goals >= 0) & (away_goals >= 0):
+                if not (np.isnan(home_goals) or np.isnan(
+                        away_goals)) and home_team in self.teams and away_team in self.teams:
+                    self.current_goals[home_team] += home_goals
+                    self.current_goals[away_team] += away_goals
+                    self.current_goals_against[home_team] += away_goals
+                    self.current_goals_against[away_team] += home_goals
 
-                if home_goals > away_goals:
-                    self.current_points[home_team] += 3
-                elif home_goals < away_goals:
-                    self.current_points[away_team] += 3
-                else:
-                    self.current_points[home_team] += 1
-                    self.current_points[away_team] += 1
-                self.all_matches[match]['Done'] = True
+                    if home_goals > away_goals:
+                        self.current_points[home_team] += 3
+                    elif home_goals < away_goals:
+                        self.current_points[away_team] += 3
+                    else:
+                        self.current_points[home_team] += 1
+                        self.current_points[away_team] += 1
+                    self.all_matches[match]['Done'] = True
+
             self.matches_to_sim = {x: self.all_matches[x] for x in self.all_matches if not self.all_matches[x]['Done']}
 
     def simulate_season(self, n_scenarios=10000):
@@ -436,7 +446,7 @@ class Season:
             return p_cl, fig
         return p_cl, None
 
-    def process_simulation(self):
+    def process_simulation(self, max_date=pd.Timestamp('2100-03-01'), verbose=False):
         n_scenarios = self.simulated_home_goals.shape[1]
         points_per_team = np.zeros([self.nr_teams, n_scenarios])
         place_per_team = np.zeros([self.nr_teams, n_scenarios])
@@ -451,24 +461,28 @@ class Season:
 
         for _match in self.matches_to_sim:
             _details = self.matches_to_sim[_match]
-            _home = _details['Home']
-            _home_id = self.team_id[_home]
-            _away = _details['Away']
-            match_id = _details['id']
-            _away_id = self.team_id[_away]
-            home_goals = self.simulated_home_goals[match_id]
-            away_goals = self.simulated_away_goals[match_id]
-            goals_per_team[_home_id, :] += home_goals
-            goals_per_team[_away_id, :] += away_goals
-            goals_against_per_team[_home_id, :] += away_goals
-            goals_against_per_team[_away_id, :] += home_goals
-            home_won = home_goals > away_goals
-            away_won = home_goals < away_goals
-            draw = home_goals == away_goals
-            points_per_team[_home_id, home_won] += 3
-            points_per_team[_home_id, draw] += 1
-            points_per_team[_away_id, away_won] += 3
-            points_per_team[_away_id, draw] += 1
+            _date = _details['Date']
+            if _date <= max_date:
+                if verbose:
+                    print(_match)
+                _home = _details['Home']
+                _home_id = self.team_id[_home]
+                _away = _details['Away']
+                match_id = _details['id']
+                _away_id = self.team_id[_away]
+                home_goals = self.simulated_home_goals[match_id]
+                away_goals = self.simulated_away_goals[match_id]
+                goals_per_team[_home_id, :] += home_goals
+                goals_per_team[_away_id, :] += away_goals
+                goals_against_per_team[_home_id, :] += away_goals
+                goals_against_per_team[_away_id, :] += home_goals
+                home_won = home_goals > away_goals
+                away_won = home_goals < away_goals
+                draw = home_goals == away_goals
+                points_per_team[_home_id, home_won] += 3
+                points_per_team[_home_id, draw] += 1
+                points_per_team[_away_id, away_won] += 3
+                points_per_team[_away_id, draw] += 1
 
         modified_points = np.zeros([self.nr_teams, n_scenarios])
         modified_points += points_per_team
@@ -544,33 +558,52 @@ class Season:
                 'Deff', 'Degr']
         return df[cols]
 
-    def probability_grid(self):
+    def probability_grid(self, ind=None):
+        if not self.simulation_done:
+            print('simulation not yet done, simulating')
+            self.simulate_season()
+        if not self.simulation_processed:
+            print('simulation not yet processed, processing')
+            self.process_simulation()
+        if ind is None:
+            ind = np.ones(self.points_per_team.shape[1]).astype(bool)
+
         fig = plt.figure(1)
-        i_sort = (-self.points_per_team.mean(axis=1)).argsort()
+
         T = np.zeros([self.nr_teams, self.nr_teams])
         team_names = []
+        current_points = np.zeros(self.nr_teams)
         for name, i in self.team_id.items():
-            T[i, :] = np.bincount(self.place_per_team[i, :].astype(int) - 1, minlength=self.nr_teams)
+            T[i, :] = np.bincount(self.place_per_team[i, ind].astype(int) - 1, minlength=self.nr_teams)
             T[i, :] = 100 * T[i, :] / T[i, :].sum()
             team_names.append(name)
+            current_points[i]=self.current_points[name]
+        # i_sort = (-self.points_per_team[:, ind].mean(axis=1)).argsort()
+        i_sort = (-current_points).argsort()
         team_names = np.array(team_names)[i_sort]
         T = T[i_sort, :]
         plt.imshow(T, cmap='binary')
         for i in range(self.nr_teams):
-            for j in range(self.nr_teams):
-                if (j == self.nr_cl) | (j == self.nr_teams - self.nr_degr-1):
-                    plt.axvline(x=j - 0.5, color='r', linewidth=1)
-                else:
-                    plt.axvline(x=j - 0.5, color='k', linewidth=1)
-                plt.axhline(y=j - 0.5, color='k', linewidth=1)
-                if T[i, j] >= 1:
-                    plt.text(i - 0.35, j + 0.1, '{:0.0f}%'.format(T[i, j]), color='green')
+            if (i == self.nr_cl) | (i == self.nr_teams - self.nr_degr - 1):
+                plt.axvline(x=i - 0.5, color='r', linewidth=1)
+            else:
+                plt.axvline(x=i - 0.5, color='k', linewidth=1)
+            plt.axhline(y=i - 0.5, color='k', linewidth=1)
 
-        plt.colorbar()
+            for j in range(self.nr_teams):
+                if T[i, j] >= 1:
+                    if T[i, j] >=50:
+                        color = 'white'
+                    else:
+                        color='green'
+                    plt.text(j - 0.35, i + 0.1, '{:0.0f}%'.format(T[i, j]), color=color)
+
+        # plt.colorbar()
         plt.yticks(np.arange(self.nr_teams), team_names)
         plt.xticks(np.arange(self.nr_teams), np.arange(self.nr_teams) + 1)
         # plt.grid(True)
         fig.set_size_inches(16, 12)
+        return team_names,T
 
     def team_report(self, team):
         if not self.simulation_done:

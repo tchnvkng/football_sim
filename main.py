@@ -21,6 +21,12 @@ League.process_current_results(calibrator.get_current_results(country))
 League.simulate_season(n_scenarios=100000)
 League.season_report().to_html('bpl.html')
 
+
+
+PremierLeague=League
+
+ind = (PremierLeague.place_per_team[PremierLeague.team_id['Manchester United'],:]<=4)
+PremierLeague.probability_grid(ind=ind)
 imp = []
 ref_team = 'Manchester United'
 # ref_team='Liverpool'
