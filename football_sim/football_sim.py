@@ -574,14 +574,14 @@ class Season:
         fig = plt.figure(1)
 
         T = np.zeros([self.nr_teams, self.nr_teams])
-        team_names = []
+        team_names = ['']*self.nr_teams
         current_points = np.zeros(self.nr_teams)
         current_goals = np.zeros(self.nr_teams)
         current_goals_against = np.zeros(self.nr_teams)
         for name, i in self.team_id.items():
             T[i, :] = np.bincount(self.place_per_team[i, ind].astype(int) - 1, minlength=self.nr_teams)
             T[i, :] = 100 * T[i, :] / T[i, :].sum()
-            team_names.append(name)
+            team_names[i]=name
             current_points[i] = self.current_points[name]
             current_goals[i] = self.current_goals[name]
             current_goals_against[i] = self.current_goals_against[name]
@@ -624,7 +624,7 @@ class Season:
         plt.plot(np.arange(self.nr_teams-1)+0.5,np.arange(self.nr_teams-1)+0.5,'+r')
         # plt.grid(True)
         fig.set_size_inches(16, 12)
-        return team_names,T
+        return team_names,T,fig
 
     def team_report(self, team):
         if not self.simulation_done:
