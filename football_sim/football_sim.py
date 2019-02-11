@@ -447,6 +447,9 @@ class Season:
         return p_cl, None
 
     def process_simulation(self, max_date=pd.Timestamp('2100-03-01'), verbose=False):
+        if not self.simulation_done:
+            print('simulation not yet done, simulating')
+            self.simulate_season()
         n_scenarios = self.simulated_home_goals.shape[1]
         points_per_team = np.zeros([self.nr_teams, n_scenarios])
         place_per_team = np.zeros([self.nr_teams, n_scenarios])
@@ -464,7 +467,7 @@ class Season:
             _date = _details['Date']
             if _date <= max_date:
                 if verbose:
-                    print(_match)
+                    print(_date,_match)
                 _home = _details['Home']
                 _home_id = self.team_id[_home]
                 _away = _details['Away']
@@ -573,34 +576,52 @@ class Season:
         T = np.zeros([self.nr_teams, self.nr_teams])
         team_names = []
         current_points = np.zeros(self.nr_teams)
+        current_goals = np.zeros(self.nr_teams)
+        current_goals_against = np.zeros(self.nr_teams)
         for name, i in self.team_id.items():
             T[i, :] = np.bincount(self.place_per_team[i, ind].astype(int) - 1, minlength=self.nr_teams)
             T[i, :] = 100 * T[i, :] / T[i, :].sum()
             team_names.append(name)
-            current_points[i]=self.current_points[name]
+            current_points[i] = self.current_points[name]
+            current_goals[i] = self.current_goals[name]
+            current_goals_against[i] = self.current_goals_against[name]
+        modified_points = np.zeros(self.nr_teams)
+        modified_points += current_points
+        b = (current_goals - current_goals_against).max()
+        a = (current_goals - current_goals_against).min()
+        modified_points += 0.1 * ((current_goals - current_goals_against) - a) / (b - a)
+        b = current_goals.max()
+        a = current_goals.min()
+        modified_points += 0.01 * (current_goals - a) / (b - a)
+        modified_points += 0.001 * np.random.random(modified_points.shape)
         # i_sort = (-self.points_per_team[:, ind].mean(axis=1)).argsort()
-        i_sort = (-current_points).argsort()
+        i_sort = (-modified_points).argsort()
         team_names = np.array(team_names)[i_sort]
         T = T[i_sort, :]
         plt.imshow(T, cmap='binary')
         for i in range(self.nr_teams):
             if (i == self.nr_cl) | (i == self.nr_teams - self.nr_degr - 1):
                 plt.axvline(x=i - 0.5, color='r', linewidth=1)
+                plt.axhline(y=i - 0.5, color='r', linewidth=1)
             else:
                 plt.axvline(x=i - 0.5, color='k', linewidth=1)
-            plt.axhline(y=i - 0.5, color='k', linewidth=1)
+                plt.axhline(y=i - 0.5, color='k', linewidth=1)
+
 
             for j in range(self.nr_teams):
+                if T[i, j] >= 50:
+                    color = 'white'
+                else:
+                    color = 'green'
                 if T[i, j] >= 1:
-                    if T[i, j] >=50:
-                        color = 'white'
-                    else:
-                        color='green'
                     plt.text(j - 0.35, i + 0.1, '{:0.0f}%'.format(T[i, j]), color=color)
+                elif T[i, j] >= 0.1:
+                    plt.text(j - 0.35, i + 0.1, '{:0.1f}%'.format(T[i, j]), color=color)
 
         # plt.colorbar()
         plt.yticks(np.arange(self.nr_teams), team_names)
         plt.xticks(np.arange(self.nr_teams), np.arange(self.nr_teams) + 1)
+        plt.plot(np.arange(self.nr_teams-1)+0.5,np.arange(self.nr_teams-1)+0.5,'+r')
         # plt.grid(True)
         fig.set_size_inches(16, 12)
         return team_names,T
