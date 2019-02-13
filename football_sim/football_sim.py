@@ -572,6 +572,7 @@ class Season:
             ind = np.ones(self.points_per_team.shape[1]).astype(bool)
 
         fig = plt.figure(1)
+        fig.clear()
 
         T = np.zeros([self.nr_teams, self.nr_teams])
         team_names = ['']*self.nr_teams
@@ -600,7 +601,7 @@ class Season:
         T = T[i_sort, :]
         plt.imshow(T, cmap='binary')
         for i in range(self.nr_teams):
-            if (i == self.nr_cl) | (i == self.nr_teams - self.nr_degr - 1):
+            if (i == self.nr_cl) | (i == self.nr_teams - self.nr_degr):
                 plt.axvline(x=i - 0.5, color='r', linewidth=1)
                 plt.axhline(y=i - 0.5, color='r', linewidth=1)
             else:
