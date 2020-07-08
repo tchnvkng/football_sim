@@ -1,29 +1,32 @@
 import pandas as pd
 import numpy as np
+import matplotlib
+matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 import pickle
 import os
 import copy
 import http.client
-import json
+import yaml
 import time
 
-plt.rcParams['figure.figsize']=[16,9]
-def get_data(urls):
-    all_data = dict()
-
-    for country in urls:
-        all_data[country] = pd.read_csv(urls[country], usecols=['Date', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG'])
-        all_data[country]['Date']=pd.to_datetime(all_data[country]['Date'])
-        all_data[country] = all_data[country].dropna()
-        all_data[country]['FTHG'] =all_data[country]['FTHG'].astype(int)
-        all_data[country]['FTAG'] = all_data[country]['FTAG'].astype(int)
-
-    return all_data
+plt.rcParams['figure.figsize'] = [16, 9]
 
 
-def add_match(data, home, home_goals, away, away_goals,the_date=pd.to_datetime('today')):
-    if data.index.shape[0]>0:
+class Settings:
+    def __init__(self,settings_file):
+        self.league_info = yaml.safe_load(open(settings_file, 'r'))
+        self.domestic_leagues = list(self.league_info.keys())
+        self.eu_leagues = ['UCL', 'UEL']
+    def get_info(self,name):
+        if name in self.league_info:
+            return self.league_info[name]
+
+
+
+
+def add_match(data, home, home_goals, away, away_goals, the_date=pd.to_datetime('today')):
+    if data.index.shape[0] > 0:
         max_ind = data.index.max()
     else:
         max_ind = 0
@@ -32,132 +35,78 @@ def add_match(data, home, home_goals, away, away_goals,the_date=pd.to_datetime('
     return data.append(a)
 
 
-def request_data(req_str):
-    success = False
-    while not success:
-        connection = http.client.HTTPConnection('api.football-data.org')
-        headers = {'X-Auth-Token': '4ba22c664da84bd4a8d6fe0cf2e9f312', 'X-Response-Control': 'minified'}
-        connection.request('GET', req_str, None, headers)
-        response = json.loads(connection.getresponse().read().decode())
-        if type(response) == dict:
-            if 'error' in list(response.keys()):
-                print(response['error'])
-                print('waiting 10 seconds')
-                time.sleep(10)
-            else:
-                success = True
-        else:
-            success = True
-
-    return response
-
-
-class CompetitionResults:
-    def __init__(self, competition_id,redo=False):
-        self.id = competition_id
-        self.file_name = 'competition_{}.pkl'.format(self.id)
-        req_str = '/v1/competitions/{}'.format(self.id)
-        response = request_data(req_str)
-        self.name = response['caption']
-        self.short_name = response['league']
-        self.current_match_day = response['currentMatchday']
-        self.number_of_match_days = response['numberOfMatchdays']
-        self.number_of_teams = response['numberOfTeams']
-        self.number_of_games = response['numberOfGames']
-        self.last_updated = response['lastUpdated']
-        self.fixtures = dict()
-        if redo and os.path.isfile(self.file_name):
-            os.remove(self.file_name)
-
-        if os.path.isfile(self.file_name):
-            print('file exists, loading')
-            self.load()
-        else:
-            req_str = '/v1/competitions/{}/fixtures'.format(self.id)
-            self.fixture_list = request_data(req_str)['fixtures']
-            for x in self.fixture_list:
-                _f = Fixture(x)
-                self.fixtures[_f.id] = _f
-            self.save()
-        self.update_fixtures()
-
-    def update_fixture_list(self):
-        req_str = '/v1/competitions/{}/fixtures'.format(self.id)
-        self.fixture_list = request_data(req_str)['fixtures']
-        self.update_fixtures()
-
-    def update_fixtures(self):
-        for _id in self.fixtures:
-            _f = self.fixtures[_id]
-            if (_f.status != 'FINISHED') and (_f.date <= pd.to_datetime('today')):
-                _f.update()
-        self.save()
-
-    def load(self):
-        with open(self.file_name, 'rb') as input:
-            self.fixtures = pickle.load(input)
-            self.fixture_list = pickle.load(input)
-
-    def save(self):
-        if os.path.isfile(self.file_name):
-            os.remove(self.file_name)
-
-        with open(self.file_name, 'wb') as output:
-            pickle.dump(self.fixtures, output, pickle.HIGHEST_PROTOCOL)
-            pickle.dump(self.fixture_list, output, pickle.HIGHEST_PROTOCOL)
-
-    def make_df(self):
-        data = pd.DataFrame()
-        for _id in self.fixtures:
-            _f = self.fixtures[_id]
-            if _f.status == 'FINISHED':
-                data = add_match(data, _f.home_team_name, _f.home_goals, _f.away_team_name, _f.away_goals, the_date=_f.date)
-        return data
-
-
-
 class Fixture:
-    def __init__(self,details):
-        self.id = None
-        self.competition_id = None
-        self.date = None
-        self.status = None
-        self.match_day = None
-        self.home_team_name = None
-        self.home_team_id = None
-        self.away_team_name = None
-        self.away_team_id = None
-        self.home_goals = None
-        self.away_goals = None
-        self.all = None
-        self.process_details(details)
-
-    def process_details(self,details):
-        self.id = details['id']
-        self.competition_id = details['competitionId']
-        self.date = pd.to_datetime(details['date'])
-        self.status = details['status']
-        self.match_day = details['matchday']
-        self.home_team_name = details['homeTeamName']
-        self.home_team_id = details['homeTeamId']
-        self.away_team_name = details['awayTeamName']
-        self.away_team_id = details['awayTeamId']
-        self.home_goals = details['result']['goalsHomeTeam']
-        self.away_goals = details['result']['goalsAwayTeam']
-        self.all = details
-
-    def update(self):
-        req='/v1/fixtures/{}'.format(self.id)
-        updated_result = request_data(req)['fixture']
-        self.process_details(updated_result)
+    def __init__(self, row,settings):
+        self.domestic_leagues = settings.domestic_leagues
+        self.eu_leagues = settings.eu_leagues
+        self.league = row['League']
+        self.home_team_name = row['HomeTeam']
+        self.away_team_name = row['AwayTeam']
+        self.league_team_of_home_team = None
+        self.league_team_of_away_team = None
+        self.league_home_team = None
+        self.league_away_team = None
+        self.home_team = None
+        self.away_team = None
+        self.date = row['Date']
+        # a = 1/10
+        # f = lambda x: (1- np.exp(-a*x))/a
+        f = lambda x: x
+        self.home_goals = f(row['FTHG'])
+        self.away_goals = f(row['FTAG'])
+        self.home_metrics = [row['xg1'],row['nsxg1'],row['adj_score1']]
+        self.away_metrics = [row['xg2'], row['nsxg2'], row['adj_score2']]
+        if np.isnan(self.home_metrics).any() or np.isnan(self.away_metrics).any():
+            self.home_ag = self.home_goals
+            self.away_ag = self.away_goals
+        else:
+            self.home_ag = np.mean(self.home_metrics)
+            self.away_ag = np.mean(self.away_metrics)
 
 
-class Calibrator():
-    def __init__(self, file_name, old_teams=dict(), redo=False):
+        self.id = ('_'.join([self.league, self.home_team_name, self.away_team_name, self.date.strftime('%Y-%m-%d')])).replace(' ', '').lower()
+
+    def set_teams(self, team_dict):
+        self.home_team = team_dict[self.home_team_name]
+        self.away_team = team_dict[self.away_team_name]
+        self.league_team_of_home_team = team_dict[self.home_team.country]
+        self.league_team_of_away_team = team_dict[self.away_team.country]
+        self.league_home_team = team_dict[self.home_team.country + 'Home']
+        self.league_away_team = team_dict[self.away_team.country + 'Away']
+    def __repr__(self):
+        h = [self.home_goals] +  self.home_metrics
+        a = [self.away_goals] + self.away_metrics
+        i = ['goals','xg','nsxg','ag']
+        df = pd.DataFrame({'metric':i,self.home_team_name:h,self.away_team_name:a})
+        return df.__repr__()
+
+
+class Calibrator:
+    def __init__(self, file_name, settings,season , old_teams=dict(), redo=False, league_start=None, calibration_start=None):
+        self.settings = settings
+        self.season = season
         self.file_name = file_name
         self.teams = dict()
-        self.old_teams=old_teams
-        self.processed_matches = []
+        self.old_teams = old_teams
+        self.raw_data = None
+        t0 = pd.Timestamp('today')
+
+        if t0.month >= 7:
+            t_default_start = pd.Timestamp(t0.year, 7, 1)
+        else:
+            t_default_start = pd.Timestamp(t0.year - 1, 7, 1)
+        if league_start is None:
+            self.league_start = t_default_start
+        else:
+            self.league_start = pd.Timestamp(league_start)
+        if calibration_start is None:
+            self.calibration_start = t_default_start
+        else:
+            self.calibration_start = pd.Timestamp(calibration_start)
+        self._teams_created = False
+        self.domestic_leagues = settings.domestic_leagues
+        self.eu_leagues = settings.eu_leagues
+        self.processed_matches = dict()
         if redo:
             print('Force recalibrate')
         if os.path.isfile(file_name):
@@ -176,6 +125,7 @@ class Calibrator():
         with open(self.file_name, 'rb') as input:
             self.teams = pickle.load(input)
             self.processed_matches = pickle.load(input)
+            self.raw_data = pickle.load(input)
 
     def save(self):
         if os.path.isfile(self.file_name):
@@ -184,8 +134,9 @@ class Calibrator():
         with open(self.file_name, 'wb') as output:
             pickle.dump(self.teams, output, pickle.HIGHEST_PROTOCOL)
             pickle.dump(self.processed_matches, output, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(self.raw_data, output, pickle.HIGHEST_PROTOCOL)
 
-    def create_team(self,team_name,country):
+    def create_team(self, team_name, country):
         if team_name not in self.teams:
             if team_name in self.old_teams:
                 self.teams[team_name] = copy.deepcopy(self.old_teams[team_name])
@@ -193,56 +144,106 @@ class Calibrator():
             else:
                 self.teams[team_name] = Team(name=team_name, country=country)
 
-    def process_data(self, _data, _country,update_params=True):
-        for index, row in _data.iterrows():
+    def download_all_data(self):
+        f = lambda x: "".join([y[0] for y in x.upper().split()])
+        df = pd.read_csv('https://projects.fivethirtyeight.com/soccer-api/club/spi_matches.csv')
+        # df = pd.read_csv('spi_matches_plus.csv')
+        df = df.rename(columns={'team1': 'HomeTeam', 'team2': 'AwayTeam', 'score1': 'FTHG', 'score2': 'FTAG',
+                                'league': 'League','season':'Season'})
+        ind = (df['FTAG'].isnull() | df['FTHG'].isnull())
+        df.loc[ind, 'FTAG']=-100
+        df.loc[ind, 'FTHG'] = -100
+        ind = df['Season'].isnull()
+        df.loc[ind, 'Season'] = -100
+        df['Season'] = df['Season'].astype(int)
+        df['FTAG'] = df['FTAG'].astype(int)
+        df['FTHG'] = df['FTHG'].astype(int)
+        df['Date'] = pd.to_datetime(df['date'])
+        df.to_csv('spi_matches.csv', index=False)
+        df = df[['Date','Season','League', 'HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'xg1', 'xg2', 'nsxg1',
+                 'nsxg2','adj_score1','adj_score2']]
+        # ind = (df['Date'] > self.calibration_start)
+        ind = df['Season'] == self.season
+        df = df.loc[ind]
+        df['League'] = df['League'].apply(f)
+        # replace_dict = {'\xfc': 'ue', '\xe9': 'e'}
+        #for c1, c2 in replace_dict.items():
+        #    pass
+        #    #df['HomeTeam'] = df['HomeTeam'].apply(lambda x: x.replace(c1, c2))
+        #    #df['AwayTeam'] = df['AwayTeam'].apply(lambda x: x.replace(c1, c2))
+        self.raw_data = df
+
+    def get_current_results(self, league, only_done=False):
+        if self.raw_data is None:
+            self.download_all_data()
+        ind = self.raw_data['League'] == league
+        # ind = ind & (self.raw_data['Date'] > self.league_start)
+        ind = ind & (self.raw_data['Season'] == self.season)
+        if only_done:
+            ind = ind & (self.raw_data['FTAG'] >= 0)
+            ind = ind & (self.raw_data['FTHG'] >= 0)
+
+        return self.raw_data.loc[ind]
+
+    def get_teams_for_league(self, _league):
+        ind = self.raw_data['League'] == _league
+        ind = ind & (self.raw_data['Season'] == self.season)
+        # ind = ind & (self.raw_data['Date'] >= self.league_start)
+        _team_names = np.unique(self.raw_data.loc[ind, ['HomeTeam', 'AwayTeam']].values)
+        return {x: self.teams[x] for x in _team_names}
+
+    def create_all_teams(self):
+        if self.raw_data is None:
+            self.download_all_data()
+        for _league in self.domestic_leagues:
+            self.create_team(_league, 'UEFA')
+            self.create_team(_league + 'Home', _league + '0')
+            self.create_team(_league + 'Away', _league + '0')
+        ind = self.raw_data['League'].apply(lambda x: x in self.domestic_leagues)
+        # ind = ind & (self.raw_data['Date'] > self.calibration_start)
+        for _, row in self.raw_data.loc[ind, ['League', 'HomeTeam', 'AwayTeam']].iterrows():
             home_team_name = row['HomeTeam']
             away_team_name = row['AwayTeam']
-            self.create_team(home_team_name,_country)
-            self.create_team(away_team_name,_country)
-            self.create_team('Home'+_country,_country+'0')
-            self.create_team('Away'+_country,_country+'0')
-            date = row['Date'].strftime('%Y-%m-%d')
-            hg = row['FTHG']
-            ag = row['FTAG']
-            this_match = date+home_team_name+away_team_name
-            if this_match not in self.processed_matches and update_params:
-                if not (np.isnan(hg) or np.isnan(ag)):
-                    print((date, home_team_name, away_team_name, hg, ag))
-                    self.processed_matches.append(this_match)
-                    self.teams[home_team_name].scored_against(self.teams[away_team_name], hg)
-                    self.teams[away_team_name].scored_against(self.teams[home_team_name], ag)
-                    self.teams['Home'+_country].scored_against(self.teams['Away'+_country], hg)
-                    self.teams['Away'+_country].scored_against(self.teams['Home'+_country], ag)
-                    #self.teams[home_team_name].simplify()
-                    #self.teams[away_team_name].simplify()
+            league = row['League']
+            self.create_team(home_team_name, league)
+            self.create_team(away_team_name, league)
+        self._teams_created = True
+
+    def process_data(self, update_params=True, verbose=False):
+        self.download_all_data()
+        if not self._teams_created:
+            self.create_all_teams()
+        ind = self.raw_data['League'].apply(lambda x: x in self.domestic_leagues + self.eu_leagues)
+        # ind = ind & (self.raw_data['Date'] > self.calibration_start)
+        ind = ind & (self.raw_data['Season'] == self.season)
+        ind = ind & (self.raw_data['FTAG'] >= 0)
+        ind = ind & (self.raw_data['FTHG'] >= 0)
+        t0 = pd.Timestamp('today')
+        t1 = t0 - pd.Timedelta('270 days')
+        print(t0,t1)
+        ind = ind & (self.raw_data['Date'] > t1)
+        for index, row in self.raw_data.loc[ind].iterrows():
+            fixture = Fixture(row,self.settings)
+            try:
+                if fixture.id not in self.processed_matches and update_params:
+                    if not (np.isnan(fixture.home_goals) or np.isnan(fixture.away_goals)):
+                        if verbose:
+                            print((fixture.date, fixture.home_team_name, fixture.away_team_name, fixture.home_goals, fixture.away_goals))
+                        if fixture.league in self.domestic_leagues:
+                            fixture.set_teams(self.teams)
+                            fixture.home_team.scored_against(fixture.away_team, fixture.home_ag)
+                            fixture.away_team.scored_against(fixture.home_team, fixture.away_ag)
+                            fixture.league_home_team.scored_against(fixture.league_away_team, fixture.home_ag)
+                            fixture.league_away_team.scored_against(fixture.league_home_team, fixture.away_ag)
+                        elif fixture.league in self.eu_leagues and fixture.home_team_name in self.teams and fixture.away_team_name in self.teams:
+                            fixture.set_teams(self.teams)
+                            fixture.league_team_of_home_team.scored_against(fixture.league_team_of_away_team, fixture.home_ag)
+                            fixture.league_team_of_away_team.scored_against(fixture.league_team_of_home_team, fixture.away_ag)
+                    self.processed_matches[fixture.id] = fixture
+            except Exception as err:
+                print(err)
+
         self.save()
-
-
-def calibrate(teams, all_data):
-    for _country in all_data:
-        _data = all_data[_country]
-        for index, row in _data.iterrows():
-            home_team = teams[row['HomeTeam']]
-            away_team = teams[row['AwayTeam']]
-            hg = row['FTHG']
-            ag = row['FTAG']
-            if not (np.isnan(hg) or np.isnan(ag)):
-                home_team.scored_against(away_team, hg)
-                away_team.scored_against(home_team, ag)
-                home_team.simplify()
-                away_team.simplify()
-    return teams
-
-
-def create_teams(all_data):
-    teams = dict()
-    all_team_names = dict()
-    for _country in all_data:
-        all_team_names[_country] = set(all_data[_country]['HomeTeam']).union(set(all_data[_country]['AwayTeam']))
-        _team_names = all_team_names[_country]
-        for _team_name in _team_names:
-            teams[_team_name] = Team(name=_team_name, country=_country)
-    return teams
 
 
 class Team(object):
@@ -269,12 +270,12 @@ class Team(object):
         self.p = self.p / self.p.sum()
         self.q = self.q / self.q.sum()
 
-    def forget(self,p_mix=0.5):
-        self.p=(1-p_mix)*self.p+p_mix/self.p.shape[0]
-        self.q=(1-p_mix)*self.q+p_mix/self.q.shape[0]
+    def forget(self, p_mix=0.5):
+        self.p = (1 - p_mix) * self.p + p_mix / self.p.shape[0]
+        self.q = (1 - p_mix) * self.q + p_mix / self.q.shape[0]
         self.normalize()
 
-    def outcomes_vs(self, other_team, n_scenarios=int(1e5), home_advantage=np.array([0, 1])):
+    def outcomes_vs(self, other_team, n_scenarios=int(1e5), home_advantage=1):
         g = np.zeros([n_scenarios, 2])
         g[:, 0], g[:, 1], _ = self.vs(other_team, n=n_scenarios, home_advantage=home_advantage)
         u, c = np.unique(g, axis=0, return_counts=True)
@@ -295,14 +296,13 @@ class Team(object):
         plt.legend()
         plt.xlim(-0.5, x[p > 0.5].max() + 0.5)
         plt.grid()
-        gmean=g.mean(axis=0)
-        plt.title('{} ({:.2f}) vs {} ({:.2f})'.format(self.name,gmean[0] ,other_team.name,gmean[1]))
+        gmean = g.mean(axis=0)
+        plt.title('{} ({:.2f}) vs {} ({:.2f})'.format(self.name, gmean[0], other_team.name, gmean[1]))
 
-    def vs(self, other_team, n=int(1e4),home_advantage=np.array([0,1])):
-        lH = (np.random.choice(self.lmbd_set, size=n, p=self.p)+home_advantage[0])*np.random.choice(other_team.tau_set, size=n, p=other_team.q)
+    def vs(self, other_team, n=int(1e4), home_advantage=1):
+        lH = np.random.choice(self.lmbd_set, size=n, p=self.p)  * np.random.choice(other_team.tau_set, size=n, p=other_team.q)*home_advantage
         gH = np.random.poisson(lH)
-        lA = np.random.choice(other_team.lmbd_set, size=n, p=other_team.p)*np.random.choice(self.tau_set, size=n, p=self.q)*home_advantage[1]
-        lA=np.maximum(lA,0)
+        lA = np.random.choice(other_team.lmbd_set, size=n, p=other_team.p) * np.random.choice(self.tau_set, size=n, p=self.q)
         gA = np.random.poisson(lA)
         match_des = self.name + ' vs ' + other_team.name
         return gH, gA, match_des
@@ -326,11 +326,20 @@ class Team(object):
         return self.p.dot(self.lmbd_set), self.q.dot(self.tau_set)
 
     def scored_against(self, other, k):
-        lmb_plus_tau = self.lmbd_set*other.tau_set[:, np.newaxis]
-        new_p = ((np.exp(-lmb_plus_tau) * (lmb_plus_tau ** k)).T * other.q).sum(axis=1) * self.p
+        x0 = 3
+        x1 = 10
+        y1 = 7
+        b = 0.5 * (y1 - x1) / (x1 - x0)
+        c = 1 + b
+        a = -b * x0
+        f_abs = lambda x: np.sqrt(x ** 2 + 1)
+        # k = a + b * f_abs(k - x0) + c * k
+        lmb_times_tau = self.lmbd_set * other.tau_set[:, np.newaxis]
+        new_p = ((np.exp(-lmb_times_tau) * (lmb_times_tau ** k)).T * other.q).sum(axis=1) * self.p
         self.p = new_p / new_p.sum()
-        new_q = ((np.exp(-lmb_plus_tau) * (lmb_plus_tau ** k)) * self.p).sum(axis=1) * other.q
+        new_q = ((np.exp(-lmb_times_tau) * (lmb_times_tau ** k)) * self.p).sum(axis=1) * other.q
         other.q = new_q / new_q.sum()
+
 
 
 def p_plot(x):
@@ -345,18 +354,26 @@ def p_plot(x):
 
 
 class Season:
-    def __init__(self, teams, nr_cl=4, nr_degr=3,home_advantage=np.array([0,0])):
-        self.teams = teams
-        self.home_advantage=home_advantage
-        self.nr_cl = nr_cl
-        self.nr_degr = nr_degr
-        self.nr_teams = len(teams)
-        self.all_matches = {home + ' v ' + away: {'Done': False, 'Home': home, 'Away': away} for home in teams for away
-                            in teams if home != away}
+    def __init__(self, name, calibrator, nr_cl=4, nr_degr=3, use_home_advantage = True):
+        self.name = name
+        self.teams = calibrator.get_teams_for_league(name)
+        if use_home_advantage:
+            lH, pH = calibrator.teams[self.name + 'Home'].means()
+            lA, pA = calibrator.teams[self.name + 'Away'].means()
+            self.home_advantage = lH * pA / (lA * pH)
+        else:
+            self.home_advantage = 1
+        info = calibrator.settings.get_info(self.name)
+        self.nr_cl = info['nr_cl']
+        self.nr_degr = info['nr_deg']
+        self.nr_teams = len(self.teams)
+        self.all_matches = {home + ' v ' + away: {'Done': False, 'Home': home, 'Away': away,'Date': pd.Timestamp('today'),'eff_date_index':0,'eff_date': pd.Timestamp('today')} for home in self.teams for away
+                            in self.teams if home != away}
         self.matches_to_sim = self.all_matches
         self.current_goals = dict()
         self.current_goals_against = dict()
         self.current_points = dict()
+        self.played=dict()
         self.simulated_home_goals = None
         self.simulated_away_goals = None
         self.simulated_home_points = None
@@ -364,58 +381,135 @@ class Season:
         self.team_id = dict()
         self.inv_team_id = dict()
         i = 0
-        for _team in teams:
+        for _team in self.teams:
             self.team_id[_team] = i
             self.inv_team_id[i] = _team
             self.current_goals[_team] = 0
             self.current_goals_against[_team] = 0
             self.current_points[_team] = 0
+            self.played[_team] = 0
             i += 1
         self.simulation_done = False
         self.simulation_processed = False
 
     def process_current_results(self, data):
+        data = data.sort_values(by='Date')
+
+        #n_played = np.zeros(self.nr_teams)
+        all_teams = list(self.teams.keys())
+        cum_played = {x: 0 for x in all_teams}
+        eff_date_index = 1
+        eff_date = data['Date'].min()
+        match_cache = []
         for index, row in data.iterrows():
             home_team = row['HomeTeam']
             away_team = row['AwayTeam']
             match = home_team + ' v ' + away_team
+            match_cache.append(match)
+            if home_team in cum_played:
+                cum_played[home_team] += 1
+            else:
+                cum_played[home_team] = 0
+            if away_team in cum_played:
+                cum_played[away_team] += 1
+            else:
+                cum_played[away_team] = 0
+            #for i, x in enumerate(all_teams):
+            #    n_played[i] = cum_played[x]
+            n_played = list(cum_played.values())
+            if np.std(n_played) == 0:
+                eff_date_index = int(n_played[0])
+                eff_date = row['Date']
+                for _match in match_cache:
+                    self.all_matches[_match]['eff_date_index'] = eff_date_index
+                    self.all_matches[_match]['eff_date'] = eff_date
+                match_cache = []
+
+
+
+
             home_goals = row['FTHG']
             away_goals = row['FTAG']
-            if not (np.isnan(home_goals) or np.isnan(
-                    away_goals)) and home_team in self.teams and away_team in self.teams:
-                self.current_goals[home_team] += home_goals
-                self.current_goals[away_team] += away_goals
-                self.current_goals_against[home_team] += away_goals
-                self.current_goals_against[away_team] += home_goals
+            self.all_matches[match]['Date'] = row['Date']
 
-                if home_goals > away_goals:
-                    self.current_points[home_team] += 3
-                elif home_goals < away_goals:
-                    self.current_points[away_team] += 3
-                else:
-                    self.current_points[home_team] += 1
-                    self.current_points[away_team] += 1
-                self.all_matches[match]['Done'] = True
-            self.matches_to_sim = {x: self.all_matches[x] for x in self.all_matches if not self.all_matches[x]['Done']}
+            if (home_goals >= 0) & (away_goals >= 0):
+                if not (np.isnan(home_goals) or np.isnan(
+                        away_goals)) and home_team in self.teams and away_team in self.teams:
+                    self.current_goals[home_team] += home_goals
+                    self.current_goals[away_team] += away_goals
+                    self.current_goals_against[home_team] += away_goals
+                    self.current_goals_against[away_team] += home_goals
+                    self.played[home_team] += 1
+                    self.played[away_team] += 1
+
+                    if home_goals > away_goals:
+                        self.current_points[home_team] += 3
+                    elif home_goals < away_goals:
+                        self.current_points[away_team] += 3
+                    else:
+                        self.current_points[home_team] += 1
+                        self.current_points[away_team] += 1
+                    self.all_matches[match]['Done'] = True
+
+        self.matches_to_sim = {x: self.all_matches[x] for x in self.all_matches if not self.all_matches[x]['Done']}
+        self.remaining_date_indices = np.sort(np.unique([x['eff_date_index'] for x in self.matches_to_sim.values()]))
+        self.remaining_eff_date = np.sort(np.unique([x['eff_date'] for x in self.matches_to_sim.values()]))
+
+    def matches_remaining(self):
+        home = []
+        away = []
+        date = []
+        home_win = []
+        draw = []
+        away_win = []
+        average_home = []
+        average_away = []
+        n_sim = self.simulated_away_goals.shape[1]
+        for match_name, match_info in self.matches_to_sim.items():
+            i = match_info['id']
+            home_ = match_info['Home']
+            home.append(home_)
+            away_ = match_info['Away']
+            away.append(away_)
+            date_ = match_info['Date']
+            date.append(date_)
+            hg = self.simulated_home_goals[i, :]
+            ag = self.simulated_away_goals[i, :]
+            # home_win.append('{:0.0f}%'.format(100*(hg>ag).sum()/n_sim))
+            # draw.append('{:0.0f}%'.format(100*(hg==ag).sum()/n_sim))
+            # way_win.append('{:0.0f}%'.format(100*(hg<ag).sum()/n_sim))
+            home_win.append(100 * (hg > ag).sum() / n_sim)
+            draw.append(100 * (hg == ag).sum() / n_sim)
+            away_win.append(100 * (hg < ag).sum() / n_sim)
+            average_home.append(hg.mean())
+            average_away.append(ag.mean())
+
+        f = 1
+        home_win = np.round(home_win, f)
+        draw = np.round(draw, f)
+        away_win = np.round(away_win, f)
+        average_home = np.round(average_home, decimals=f)
+        average_away = np.round(average_away, decimals=f)
+        df = pd.DataFrame(
+            {'Date': date, 'Home': home, 'Away': away, 'Home Wins': home_win, 'Draw': draw, 'Away Wins': away_win,
+             'av HG': average_home, 'av AG': average_away})
+        return df.sort_values(by='Date')
 
     def simulate_season(self, n_scenarios=10000):
         nr_matches_to_sim = len(self.matches_to_sim)
-        self.match_id = dict()
-        i = 0
         self.simulated_home_goals = np.zeros([nr_matches_to_sim, n_scenarios])
         self.simulated_away_goals = np.zeros([nr_matches_to_sim, n_scenarios])
-        for match in self.matches_to_sim:
-            self.match_id[match] = i
+        for i, match in enumerate(self.matches_to_sim):
+            self.matches_to_sim[match]['id'] = i
             home_team = self.teams[self.matches_to_sim[match]['Home']]
             away_team = self.teams[self.matches_to_sim[match]['Away']]
-            gH, gA, _ = home_team.vs(away_team, n=n_scenarios,home_advantage=self.home_advantage)
+            gH, gA, _ = home_team.vs(away_team, n=n_scenarios, home_advantage=self.home_advantage)
             self.simulated_home_goals[i, :] = gH
             self.simulated_away_goals[i, :] = gA
-            i += 1
         self.simulation_done = True
         self.simulation_processed = False
 
-    def what_if(self, match, ref_team='Man United',show_plot=True,place=4,or_better=True):
+    def what_if(self, match, ref_team, show_plot=True, place=4, or_better=True):
         if not self.simulation_done:
             print('simulation not yet done, simulating')
             self.simulate_season()
@@ -423,21 +517,20 @@ class Season:
             print('simulation not yet processed, processing')
             self.process_simulation()
 
-        match_id = self.match_id[match]
-        _details = self.matches_to_sim[match]
-        _home = _details['Home']
-        _away = _details['Away']
-
+        match_id = match['id']
+        _home = match['Home']
+        _away = match['Away']
+        ref_team_name = ref_team.name
         home_goals = self.simulated_home_goals[match_id, :]
         away_goals = self.simulated_away_goals[match_id, :]
         home_won = home_goals > away_goals
         away_won = home_goals < away_goals
         draw = home_goals == away_goals
-        ref_team_id = self.team_id[ref_team]
+        ref_team_id = self.team_id[ref_team_name]
         place_if_home = self.place_per_team[ref_team_id, home_won]
         place_if_away = self.place_per_team[ref_team_id, away_won]
         place_if_draw = self.place_per_team[ref_team_id, draw]
-        p_cl=np.zeros(4)
+        p_cl = np.zeros(4)
         if or_better:
             p_cl[0] = 100 * (self.place_per_team[ref_team_id] <= place).sum() / self.place_per_team[ref_team_id].shape[0]
             p_cl[1] = 100 * (place_if_home <= place).sum() / place_if_home.shape[0]
@@ -449,63 +542,64 @@ class Season:
             p_cl[2] = 100 * (place_if_away == place).sum() / place_if_away.shape[0]
             p_cl[3] = 100 * (place_if_draw == place).sum() / place_if_draw.shape[0]
 
-
-
         if show_plot:
             fig, ax = plt.subplots(1, 1)
             _width = 0.2
             x, y = p_plot(self.place_per_team[ref_team_id])
-            xx=np.zeros(x.shape[0]+1)
-            yy=np.zeros(y.shape[0]+1)
-            x_cl=x[-1]+1
-            xx[:-1]=x
-            xx[-1]=x_cl
-            yy[:-1]=y
-            yy[-1]=p_cl[0]
-            xx0=np.array(xx)
+            xx = np.zeros(x.shape[0] + 1)
+            yy = np.zeros(y.shape[0] + 1)
+            x_cl = x[-1] + 1
+            xx[:-1] = x
+            xx[-1] = x_cl
+            yy[:-1] = y
+            yy[-1] = p_cl[0]
+            xx0 = np.array(xx)
 
             ax.bar(xx - 1.5 * _width, yy, width=_width, label='Current. CL: {:0.2f}'.format(p_cl[0]))
 
-
             x, y = p_plot(place_if_home)
-            xx=np.zeros(x.shape[0]+1)
-            yy=np.zeros(y.shape[0]+1)
-            xx[:-1]=x
-            xx[-1]=x_cl
-            yy[:-1]=y
-            yy[-1]=p_cl[1]
+            xx = np.zeros(x.shape[0] + 1)
+            yy = np.zeros(y.shape[0] + 1)
+            xx[:-1] = x
+            xx[-1] = x_cl
+            yy[:-1] = y
+            yy[-1] = p_cl[1]
             ax.bar(xx - 0.5 * _width, yy, width=_width, label='{:s} Win. CL: {:0.2f}'.format(_home, p_cl[1]))
 
             x, y = p_plot(place_if_away)
-            xx=np.zeros(x.shape[0]+1)
-            yy=np.zeros(y.shape[0]+1)
-            xx[:-1]=x
-            xx[-1]=x_cl
-            yy[:-1]=y
-            yy[-1]=p_cl[2]
+            xx = np.zeros(x.shape[0] + 1)
+            yy = np.zeros(y.shape[0] + 1)
+            xx[:-1] = x
+            xx[-1] = x_cl
+            yy[:-1] = y
+            yy[-1] = p_cl[2]
             ax.bar(xx + 0.5 * _width, yy, width=_width, label='{:s} Win. CL: {:0.2f}'.format(_away, p_cl[2]))
 
             x, y = p_plot(place_if_draw)
-            xx=np.zeros(x.shape[0]+1)
-            yy=np.zeros(y.shape[0]+1)
-            xx[:-1]=x
-            xx[-1]=x_cl
-            yy[:-1]=y
-            yy[-1]=p_cl[3]
+            xx = np.zeros(x.shape[0] + 1)
+            yy = np.zeros(y.shape[0] + 1)
+            xx[:-1] = x
+            xx[-1] = x_cl
+            yy[:-1] = y
+            yy[-1] = p_cl[3]
             ax.bar(xx + 1.5 * _width, yy, width=_width, label='Draw. CL: {:0.2f}'.format(p_cl[3]))
             ax.grid(True)
-            _label=[]
+            _label = []
             for _x in xx0:
                 _label.append(str(int(_x)))
-            _label[-1]='CL'
+            _label[-1] = 'CL'
             ax.set_xticks(xx0)
             ax.set_xticklabels(_label)
             ax.legend()
-            ax.set_title(ref_team)
+            ax.set_title(ref_team_name)
             fig.set_size_inches(16, 9)
-        return p_cl
+            return p_cl, fig
+        return p_cl, None
 
-    def process_simulation(self):
+    def process_simulation(self, max_date_index=np.inf, verbose=False):
+        if not self.simulation_done:
+            print('simulation not yet done, simulating')
+            self.simulate_season()
         n_scenarios = self.simulated_home_goals.shape[1]
         points_per_team = np.zeros([self.nr_teams, n_scenarios])
         place_per_team = np.zeros([self.nr_teams, n_scenarios])
@@ -520,24 +614,31 @@ class Season:
 
         for _match in self.matches_to_sim:
             _details = self.matches_to_sim[_match]
-            _home = _details['Home']
-            _home_id = self.team_id[_home]
-            _away = _details['Away']
-            _away_id = self.team_id[_away]
-            match_id = self.match_id[_match]
-            home_goals = self.simulated_home_goals[match_id]
-            away_goals = self.simulated_away_goals[match_id]
-            goals_per_team[_home_id, :] += home_goals
-            goals_per_team[_away_id, :] += away_goals
-            goals_against_per_team[_home_id, :] += away_goals
-            goals_against_per_team[_away_id, :] += home_goals
-            home_won = home_goals > away_goals
-            away_won = home_goals < away_goals
-            draw = home_goals == away_goals
-            points_per_team[_home_id, home_won] += 3
-            points_per_team[_home_id, draw] += 1
-            points_per_team[_away_id, away_won] += 3
-            points_per_team[_away_id, draw] += 1
+            _date = _details['Date']
+            _date_index = _details['eff_date_index']
+            if _date_index <= max_date_index:
+                if verbose:
+                    print(_date,_match)
+                _home = _details['Home']
+                _home_id = self.team_id[_home]
+                _away = _details['Away']
+                match_id = _details['id']
+                _away_id = self.team_id[_away]
+                home_goals = self.simulated_home_goals[match_id]
+                away_goals = self.simulated_away_goals[match_id]
+                goals_per_team[_home_id, :] += home_goals
+                goals_per_team[_away_id, :] += away_goals
+                goals_against_per_team[_home_id, :] += away_goals
+                goals_against_per_team[_away_id, :] += home_goals
+                home_won = home_goals > away_goals
+                away_won = home_goals < away_goals
+                draw = home_goals == away_goals
+                points_per_team[_home_id, home_won] += 3
+                points_per_team[_home_id, draw] += 1
+                points_per_team[_away_id, away_won] += 3
+                points_per_team[_away_id, draw] += 1
+            else:
+                trash = 1
 
         modified_points = np.zeros([self.nr_teams, n_scenarios])
         modified_points += points_per_team
@@ -560,40 +661,48 @@ class Season:
         self.goals_against_per_team = goals_against_per_team
         self.simulation_processed = True
 
-    def season_report(self):
+    def season_report(self, ind=None):
         if not self.simulation_done:
             print('simulation not yet done, simulating')
             self.simulate_season()
         if not self.simulation_processed:
             print('simulation not yet processed, processing')
             self.process_simulation()
-
-        average_points = self.points_per_team.mean(axis=1).round(1)
-        average_goals = self.goals_per_team.mean(axis=1).round(1)
-        average_goals_against = self.goals_against_per_team.mean(axis=1).round(1)
-        p_win = (100 * (self.place_per_team == 1).sum(axis=1) / self.place_per_team.shape[1]).round(2)
-        p_cl = (100 * (self.place_per_team <= self.nr_cl).sum(axis=1) / self.place_per_team.shape[1]).round(2)
-        p_degr = (
-                100 * (self.place_per_team > self.nr_teams - self.nr_degr).sum(axis=1) / self.place_per_team.shape[
-            1]).round(2)
-        points_up = np.percentile(self.points_per_team, 95, axis=1).round(0)
-        points_down = np.percentile(self.points_per_team, 5, axis=1).round(0)
-        place_up = np.percentile(self.place_per_team, 5, axis=1).round(0)
-        place_down = np.percentile(self.place_per_team, 95, axis=1).round(0)
+        if ind is None:
+            ind = np.ones(self.points_per_team.shape[1]).astype(bool)
+        average_points = self.points_per_team[:, ind].mean(axis=1).round(1)
+        average_goals = self.goals_per_team[:, ind].mean(axis=1).round(1)
+        average_goals_against = self.goals_against_per_team[:, ind].mean(axis=1).round(1)
+        p_win = (100 * (self.place_per_team[:, ind] == 1).sum(axis=1) / ind.sum()).round(2)
+        p_cl = (100 * (self.place_per_team[:, ind] <= self.nr_cl).sum(axis=1) / ind.sum()).round(2)
+        p_degr = (100 * (self.place_per_team[:, ind] > self.nr_teams - self.nr_degr).sum(axis=1) / ind.sum()).round(2)
+        points_up = np.percentile(self.points_per_team[:, ind], 95, axis=1).round(0)
+        points_down = np.percentile(self.points_per_team[:, ind], 5, axis=1).round(0)
+        place_up = np.percentile(self.place_per_team[:, ind], 5, axis=1).round(0)
+        place_down = np.percentile(self.place_per_team[:, ind], 95, axis=1).round(0)
         team_names = []
         lmbd = []
         tau = []
-
+        current_points = []
+        played = []
+        replace_dict = {'\xfc': 'ue', '\xe9': 'e'}
         for _i in self.inv_team_id:
             team_name = self.inv_team_id[_i]
-            team_names.append(team_name)
+            team_name_ascii = team_name
+            for _from, _to in replace_dict.items():
+                team_name_ascii = team_name_ascii.replace(_from, _to)
+            current_points.append(self.current_points[team_name])
+            played.append(self.played[team_name])
+            team_names.append(team_name_ascii)
             _l, _t = self.teams[team_name].means()
             lmbd.append(_l)
             tau.append(_t)
         tau = np.array(tau).round(2)
         lmbd = np.array(lmbd).round(2)
 
-        df = pd.DataFrame({'Points (mean)': average_points,
+        df = pd.DataFrame({'Played': played,
+                           'Points (current)': current_points,
+                           'Points (mean)': average_points,
                            'Points (high)': points_up.astype(int),
                            'Points (low)': points_down.astype(int),
                            'Place (high)': place_up.astype(int),
@@ -608,17 +717,137 @@ class Season:
                            'Deff': tau},
                           index=team_names)
         df = df.sort_values(by='Points (mean)', ascending=False)
-        cols = ['Points (mean)', 'Points (low)', 'Points (high)', 'Place (low)', 'Place (high)', 'Win', 'CL', 'Off',
+        cols = ['Played','Points (current)', 'Points (mean)', 'Points (low)', 'Points (high)', 'Place (low)', 'Place (high)', 'Win', 'CL', 'Off',
                 'Deff', 'Degr']
         return df[cols]
 
-    def team_report(self, team_name):
+    def points_probability_grid(self):
+        x0 = self.points_per_team.min() - 1
+        x1 = self.points_per_team.max() + 3
+        step = (x1 - x0) / (1 + 1.5 * self.nr_teams)
+        step = np.floor(step).astype(int)
+        bins = np.arange(x0, x1, step).astype(int)
+        # bins = np.unique(np.round(np.linspace(self.points_per_team.min()-1,self.points_per_team.max()+1,int(1+1.5*self.nr_teams))).astype(int))
+
+
+        labels = ['[{:d},{:d})'.format(a, b) for a, b in zip(bins[0:-1], bins[1:])]
+
+        T = np.zeros([self.nr_teams, bins.size-1])
+        team_names = []
+        for name, i in self.team_id.items():
+            #T[i, :] = np.bincount(self.points_per_team[i, :].astype(int), minlength=int(b) + 1)
+            T[i, :] = np.histogram(self.points_per_team[i, :], bins)[0]
+            T[i, :] = 100 * T[i, :] / T[i, :].sum()
+            team_names.append(name)
+        #x = np.arange(int(b) + 1)
+
+        ind = T.max(axis=0) > 0
+
+        isort = np.argsort(self.points_per_team.mean(axis=1))
+        T = T[isort, :]
+        T = T[:, ind]
+        # x = x[ind]
+        team_names = np.array(team_names)[isort]
+        fig = plt.figure(figsize=(ind.sum() * 0.7, self.nr_teams * 0.7))
+        plt.imshow(T, cmap='binary')
+        for i in range(self.nr_teams):
+            plt.axhline(y=i - 0.5, color='k', linewidth=1)
+            for j in range(ind.sum()):
+                if T[i, j] >= 50:
+                    color = 'white'
+                else:
+                    color = 'green'
+                if T[i, j] > 0:
+                    plt.text(j - 0.35, i + 0.1, '{:0.1f}%'.format(T[i, j]), color=color)
+        for i in range(ind.sum()):
+            plt.axvline(x=i - 0.5, color='k', linewidth=1)
+        plt.ylim([-0.5, self.nr_teams - 0.5])
+        current_points = np.array([self.current_points[x] for x in team_names])
+        # y = [[i for i, a in enumerate(zip(bins[0:-1], bins[1:])) if a[0] <= x < a[1]][0] for x in current_points]
+        y = [[(i + (x - a[0]) / (a[1] - a[0]) - 0.5) for i, a in enumerate(zip(bins[0:-1], bins[1:])) if
+              a[0] <= x < a[1]][0] for x in current_points]
+        plt.plot(y, np.arange(self.nr_teams), 'r.')
+        #plt.xticks(np.arange(ind.sum()), x, rotation='vertical')
+        plt.xticks(np.arange(len(labels)), labels, rotation='vertical');
+        plt.yticks(np.arange(len(team_names)), team_names)
+        # plt.grid(True)
+        return team_names, T, fig
+
+    def probability_grid(self, ind=None, title=''):
         if not self.simulation_done:
             print('simulation not yet done, simulating')
             self.simulate_season()
         if not self.simulation_processed:
             print('simulation not yet processed, processing')
             self.process_simulation()
+        if ind is None:
+            ind = np.ones(self.points_per_team.shape[1]).astype(bool)
+
+        fig = plt.figure(1)
+
+        T = np.zeros([self.nr_teams, self.nr_teams])
+        team_names = ['']*self.nr_teams
+        current_points = np.zeros(self.nr_teams)
+        current_goals = np.zeros(self.nr_teams)
+        current_goals_against = np.zeros(self.nr_teams)
+        for name, i in self.team_id.items():
+            T[i, :] = np.bincount(self.place_per_team[i, ind].astype(int) - 1, minlength=self.nr_teams)
+            T[i, :] = 100 * T[i, :] / T[i, :].sum()
+            team_names[i]=name
+            current_points[i] = self.current_points[name]
+            current_goals[i] = self.current_goals[name]
+            current_goals_against[i] = self.current_goals_against[name]
+        modified_points = np.zeros(self.nr_teams)
+        modified_points += current_points
+        b = (current_goals - current_goals_against).max()
+        a = (current_goals - current_goals_against).min()
+        modified_points += 0.1 * ((current_goals - current_goals_against) - a) / (b - a)
+        b = current_goals.max()
+        a = current_goals.min()
+        modified_points += 0.01 * (current_goals - a) / (b - a)
+        modified_points += 0.001 * np.random.random(modified_points.shape)
+        # i_sort = (-self.points_per_team[:, ind].mean(axis=1)).argsort()
+        i_sort = (-modified_points).argsort()
+        team_names = np.array(team_names)[i_sort]
+        yticks = ['{:s} ({:d}pt in {:d}) {:d}'.format(name,self.current_points[name],self.played[name],i+1) for i,name in enumerate(team_names)]
+        T = T[i_sort, :]
+        plt.imshow(T, cmap='binary')
+        for i in range(self.nr_teams):
+            if (i == self.nr_cl) | (i == self.nr_teams - self.nr_degr):
+                plt.axvline(x=i - 0.5, color='r', linewidth=1)
+                plt.axhline(y=i - 0.5, color='r', linewidth=1)
+            else:
+                plt.axvline(x=i - 0.5, color='k', linewidth=1)
+                plt.axhline(y=i - 0.5, color='k', linewidth=1)
+
+
+            for j in range(self.nr_teams):
+                if T[i, j] >= 50:
+                    color = 'white'
+                else:
+                    color = 'green'
+                if T[i, j] >= 1:
+                    plt.text(j - 0.35, i + 0.1, '{:0.0f}%'.format(T[i, j]), color=color)
+                elif T[i, j] >= 0.1:
+                    plt.text(j - 0.35, i + 0.1, '{:0.1f}%'.format(T[i, j]), color=color)
+
+        # plt.colorbar()
+        plt.yticks(np.arange(self.nr_teams), yticks)
+        plt.xticks(np.arange(self.nr_teams), np.arange(self.nr_teams) + 1)
+        plt.plot(np.arange(self.nr_teams-1)+0.5,np.arange(self.nr_teams-1)+0.5,'+r')
+        # plt.grid(True)
+        plt.title(title)
+        fig.set_size_inches(16, 12)
+        return team_names,T,fig
+
+    def team_report(self, team):
+        if not self.simulation_done:
+            print('simulation not yet done, simulating')
+            self.simulate_season()
+        if not self.simulation_processed:
+            print('simulation not yet processed, processing')
+            self.process_simulation()
+        team_name = team.name
         fig, ax = plt.subplots(2, 2)
         x, y = p_plot(self.place_per_team[self.team_id[team_name], :])
         ax[0, 0].bar(x, y)

@@ -1,0 +1,15 @@
+BPL:
+    nr_cl: 4
+    nr_deg: 3
+
+SPD: 
+    nr_cl: 4
+    nr_deg: 3
+    
+ISA: 
+    nr_cl: 4
+    nr_deg: 3
+
+GB: 
+    nr_cl: 4
+    nr_deg: 3
