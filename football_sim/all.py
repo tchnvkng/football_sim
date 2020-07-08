@@ -68,7 +68,10 @@ class Calibrator:
             self.fixtures.append(f)
 
     def get_team(self, league, name):
-        team_ = Team(name=name, league=league, sigma_x=self.sigma_x, sigma_y=self.sigma_y)
+        if 'Home' in name or 'Away' in name:
+            team_ = Team(name=name, league=league, sigma_x=self.sigma_x/2, sigma_y=self.sigma_y/2)
+        else:
+            team_ = Team(name=name, league=league, sigma_x=self.sigma_x, sigma_y=self.sigma_y)
         if team_.id not in self.teams:
             self.teams[team_.id] = team_
         return self.teams[team_.id]
@@ -94,8 +97,6 @@ class Fixture:
         self.home_team_name = row['HomeTeam']
         self.away_team_name = row['AwayTeam']
         self.season = row['Season']
-        self.league_team_of_home_team = None
-        self.league_team_of_away_team = None
         self.league_home_team = None
         self.league_away_team = None
         self.home_team = None
@@ -139,10 +140,8 @@ class Fixture:
         self.away_team = calibrator.get_team(self.league, self.away_team_name)
         self.home_team.add_fixture(self)
         self.away_team.add_fixture(self)
-        # self.league_team_of_home_team = team_dict[self.home_team.country]
-        # self.league_team_of_away_team = team_dict[self.away_team.country]
-        # self.league_home_team = team_dict[self.home_team.country + 'Home']
-        # self.league_away_team = team_dict[self.away_team.country + 'Away']
+        self.league_home_team = calibrator.get_team(self.league+'_', self.league+'Home')
+        self.league_away_team = calibrator.get_team(self.league+'_', self.league+'Away')
 
     def simulate(self, n=int(1e4)):
         gh, ga, des = self.home_team.vs(self.away_team, n=n, home_advantage=1)
@@ -161,6 +160,8 @@ class Fixture:
 
             self.home_team.scored_against(self.away_team, self.home_ag)
             self.away_team.scored_against(self.home_team, self.away_ag)
+            self.league_home_team.scored_against(self.league_away_team, self.home_ag)
+            self.league_away_team.scored_against(self.league_home_team, self.away_ag)
         return self
 
     def __repr__(self):
@@ -343,8 +344,10 @@ class Season:
         self.calibrator = calibrator
         self.teams = calibrator.get_teams_for_league(name, year)
         if use_home_advantage:
-            l_h, p_h = calibrator.teams[self.name + 'Home'].means()
-            l_a, p_a = calibrator.teams[self.name + 'Away'].means()
+            league_home_team = calibrator.get_team(self.name + '_', self.name + 'Home')
+            league_away_team = calibrator.get_team(self.name + '_', self.name + 'Away')
+            l_h, p_h = league_home_team.means()
+            l_a, p_a = league_away_team.means()
             self.home_advantage = l_h * p_a / (l_a * p_h)
         else:
             self.home_advantage = 1
@@ -421,9 +424,6 @@ class Season:
             date.append(date_)
             hg = self.simulated_home_goals[i, :]
             ag = self.simulated_away_goals[i, :]
-            # home_win.append('{:0.0f}%'.format(100*(hg>ag).sum()/n_sim))
-            # draw.append('{:0.0f}%'.format(100*(hg==ag).sum()/n_sim))
-            # way_win.append('{:0.0f}%'.format(100*(hg<ag).sum()/n_sim))
             home_win.append(100 * np.sum(hg > ag) / n_sim)
             draw.append(100 * np.sum(hg == ag) / n_sim)
             away_win.append(100 * np.sum(hg < ag) / n_sim)
