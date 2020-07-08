@@ -143,8 +143,8 @@ class Fixture:
         self.league_home_team = calibrator.get_team(self.league+'_', self.league+'Home')
         self.league_away_team = calibrator.get_team(self.league+'_', self.league+'Away')
 
-    def simulate(self, n=int(1e4)):
-        gh, ga, des = self.home_team.vs(self.away_team, n=n, home_advantage=1)
+    def simulate(self, n=int(1e4), home_advantage=1):
+        gh, ga, des = self.home_team.vs(self.away_team, n=n, home_advantage=home_advantage)
         self.forecast_home_goals = gh.mean()
         self.forecast_away_goals = ga.mean()
         self.forecast_home_wins = 100 * np.sum(gh > ga) / n
@@ -265,7 +265,7 @@ class Team(object):
             g_a = np.random.poisson(l_a)
         else:
 
-            l_h = self.offense[-1] * other_team.defense[-1]
+            l_h = self.offense[-1] * other_team.defense[-1] * home_advantage
             l_a = other_team.offense[-1] * self.defense[-1]
             g_h = np.random.poisson(l_h, n)
             g_a = np.random.poisson(l_a, n)
@@ -446,7 +446,7 @@ class Season:
         self.simulated_home_goals = np.zeros([nr_matches_to_sim, n_scenarios])
         self.simulated_away_goals = np.zeros([nr_matches_to_sim, n_scenarios])
         for i, match in enumerate(self.matches_to_sim):
-            g_h, g_a, _ = match.simulate(n=n_scenarios)
+            g_h, g_a, _ = match.simulate(n=n_scenarios,home_advantage=self.home_advantage)
             self.simulated_home_goals[i, :] = g_h
             self.simulated_away_goals[i, :] = g_a
         self.simulation_done = True
