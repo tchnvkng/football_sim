@@ -5,6 +5,7 @@ from scipy.stats import norm
 from scipy.optimize import minimize
 import yaml
 from copy import deepcopy
+import os
 import pickle
 
 
@@ -380,7 +381,12 @@ def p_plot(x):
 
 
 class Season:
-    def __init__(self, name, year, calibrator, use_home_advantage=True):
+    def __init__(self, name, year, calibrator, use_home_advantage=True, base_folder='./'):
+        self.output_folder = os.path.join(base_folder, name)
+        self.today = pd.to_datetime('today')
+        self.today_str = self.today.strftime('%Y-%m-%d')
+        if not os.path.isdir(self.output_folder):
+            os.mkdir(self.output_folder)
         self.name = name
         self.year = year
         self.calibrator = calibrator
@@ -646,7 +652,7 @@ class Season:
         self.goals_against_per_team = goals_against_per_team
         self.simulation_processed = True
 
-    def season_report(self, ind=None):
+    def season_report(self, ind=None, file_name=None, add_date_to_file_name=False):
         if not self.simulation_done:
             print('simulation not yet done, simulating')
             self.simulate_season()
@@ -705,9 +711,15 @@ class Season:
         cols = ['Played', 'Points (current)', 'Points (mean)', 'Points (low)', 'Points (high)', 'Place (low)',
                 'Place (high)', 'Win', 'CL', 'Off',
                 'Deff', 'Degr']
+        if file_name is not None:
+            if add_date_to_file_name:
+                file_name=self.today_str+'_'+file_name
+            file_name = os.path.join(self.output_folder,file_name)
+            df[cols].to_html(file_name,index=False)
+
         return df[cols]
 
-    def points_probability_grid(self, ind=None):
+    def points_probability_grid(self, ind=None, file_name=None, add_date_to_file_name=False):
         if ind is None:
             ind = np.ones(self.points_per_team.shape[1]).astype(bool)
         x0 = self.points_per_team.min() - 1
@@ -736,6 +748,7 @@ class Season:
         # x = x[ind]
         team_names = np.array(team_names)[isort]
         fig = plt.figure(figsize=(ind.sum() * 0.7, self.nr_teams * 0.7))
+        fig.clear()
         plt.imshow(T, cmap='binary')
         for i in range(self.nr_teams):
             plt.axhline(y=i - 0.5, color='k', linewidth=1)
@@ -758,9 +771,14 @@ class Season:
         plt.xticks(np.arange(len(labels)), labels, rotation='vertical');
         plt.yticks(np.arange(len(team_names)), team_names)
         # plt.grid(True)
+        if file_name is not None:
+            if add_date_to_file_name:
+                file_name = self.today_str + '_' + file_name
+            file_name = os.path.join(self.output_folder, file_name)
+            fig.savefig(file_name)
         return team_names, T, fig
 
-    def probability_grid(self, ind=None, title=''):
+    def probability_grid(self, ind=None, title='', file_name=None, add_date_to_file_name=False):
         if not self.simulation_done:
             print('simulation not yet done, simulating')
             self.simulate_season()
@@ -771,6 +789,7 @@ class Season:
             ind = np.ones(self.points_per_team.shape[1]).astype(bool)
 
         fig = plt.figure(1)
+        fig.clear()
 
         T = np.zeros([self.nr_teams, self.nr_teams])
         team_names = [''] * self.nr_teams
@@ -825,9 +844,15 @@ class Season:
         # plt.grid(True)
         plt.title(title)
         fig.set_size_inches(16, 12)
+        if file_name is not None:
+            if add_date_to_file_name:
+                file_name = self.today_str + '_' + file_name
+            file_name = os.path.join(self.output_folder, file_name)
+            fig.savefig(file_name)
+
         return team_names, T, fig
 
-    def team_report(self, team):
+    def team_report(self, team,file_name=None,add_date_to_file_name=False):
         if not self.simulation_done:
             print('simulation not yet done, simulating')
             self.simulate_season()
@@ -849,13 +874,47 @@ class Season:
         ax[1, 0].bar(x, y)
         ax[1, 0].bar(self.current_goals[team_name] - self.current_goals_against[team_name], y.max())
         ax[1, 0].set_title('Goal Difference')
-        x, y = p_plot(self.goals_per_team[self.team_id[team_name], :])
-        ax[1, 1].bar(x, y)
-        ax[1, 1].bar(self.current_goals[team_name], y.max())
+        # x, y = p_plot(self.goals_per_team[self.team_id[team_name], :])
+        team_name = team.name
+        p0 = self.current_points[team_name]
+
+        i = self.team_id[team_name]
+
+        # p0=league.current_points['Wolverhampton']
+        # i = league.team_id['Wolverhampton']
+
+        P = (self.points_per_team[i, :] - p0).astype(int)
+        pp = np.unique(P)
+
+        prob4 = []
+        prob3 = []
+        prob5 = []
+        probp = []
+        for p in pp:
+            ind = (P == p)
+            probp.append(ind.sum() / ind.size)
+            prob4.append(np.sum(self.place_per_team[i, ind] <= 4) / ind.sum())
+            prob3.append(np.sum(self.place_per_team[i, ind] <= 3) / ind.sum())
+            prob5.append(np.sum(self.place_per_team[i, ind] <= 5) / ind.sum())
+
+        # C = len([x for x in self.matches_to_sim if team_name in [x.home_team.name, x.away_team.name]])
+        C = 1
+
+        ax[1, 1].plot(pp / C, prob3, label='<=3')
+        ax[1, 1].plot(pp / C, prob4, label='<=4')
+        ax[1, 1].plot(pp / C, prob5, label='<=5')
         ax[1, 1].set_title('Goals')
+        ax[1, 1].legend()
 
         for _i in ax:
             for _j in _i:
                 _j.grid(True)
 
         fig.set_size_inches(16, 9)
+        if file_name is not None:
+            if add_date_to_file_name:
+                file_name = self.today_str + '_' + file_name
+            file_name = os.path.join(self.output_folder, file_name)
+            fig.savefig(file_name)
+
+
