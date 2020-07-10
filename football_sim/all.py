@@ -456,7 +456,7 @@ class Season:
         self.matches_to_sim = self.calibrator.get_fixtures_for_league(self.name, self.year, completed=False)
         self.match_id = {match.id: i for i, match in enumerate(self.matches_to_sim)}
 
-    def matches_remaining(self):
+    def matches_remaining(self, team_filter=('',)):
 
         home = []
         away = []
@@ -469,18 +469,19 @@ class Season:
         n_sim = self.simulated_away_goals.shape[1]
         for i, match in enumerate(self.matches_to_sim):
             home_ = match.home_team.name
-            home.append(home_)
             away_ = match.away_team.name
-            away.append(away_)
-            date_ = match.date
-            date.append(date_)
-            hg = self.simulated_home_goals[i, :]
-            ag = self.simulated_away_goals[i, :]
-            home_win.append(100 * np.sum(hg > ag) / n_sim)
-            draw.append(100 * np.sum(hg == ag) / n_sim)
-            away_win.append(100 * np.sum(hg < ag) / n_sim)
-            average_home.append(hg.mean())
-            average_away.append(ag.mean())
+            if np.any([(f_ in home_) or (f_ in away_) for f_ in team_filter]):
+                home.append(home_)
+                away.append(away_)
+                date_ = match.date
+                date.append(date_)
+                hg = self.simulated_home_goals[i, :]
+                ag = self.simulated_away_goals[i, :]
+                home_win.append(100 * np.sum(hg > ag) / n_sim)
+                draw.append(100 * np.sum(hg == ag) / n_sim)
+                away_win.append(100 * np.sum(hg < ag) / n_sim)
+                average_home.append(hg.mean())
+                average_away.append(ag.mean())
 
         f = 1
         home_win = np.round(home_win, f)
@@ -867,7 +868,20 @@ class Season:
         ax[0, 0].set_title('Place')
         x, y = p_plot(self.points_per_team[self.team_id[team_name], :])
         ax[0, 1].bar(x, y)
-        ax[0, 1].bar(self.current_points[team_name], y.max())
+        # ax[0, 1].bar(self.current_points[team_name], y.max())
+        ax[0, 1].axvline(x=self.current_points[team_name])
+        # xticks = ax[0, 1].get_xticks()
+        n = 10
+        a = np.min(x)
+        b = np.max(x)
+        if b - a > n:
+            d = np.ceil((b - a) / (n - 1))
+            xticks = np.arange(a, b + d, d)
+        else:
+            xticks = np.arange(a, b + 1)
+        ax[0, 1].set_xticks(xticks)
+        labels = ['{:0.0f} (+{:0.0f})'.format(x, x - self.current_points[team_name]) for x in xticks]
+        ax[0, 1].set_xticklabels(labels,rotation=90)
         ax[0, 1].set_title('Points')
         x, y = p_plot(
             self.goals_per_team[self.team_id[team_name], :] - self.goals_against_per_team[self.team_id[team_name], :])
@@ -903,14 +917,14 @@ class Season:
         ax[1, 1].plot(pp / C, prob3, label='<=3')
         ax[1, 1].plot(pp / C, prob4, label='<=4')
         ax[1, 1].plot(pp / C, prob5, label='<=5')
-        ax[1, 1].set_title('Goals')
+        ax[1, 1].set_title('Probabilities')
         ax[1, 1].legend()
 
         for _i in ax:
             for _j in _i:
                 _j.grid(True)
 
-        fig.set_size_inches(16, 9)
+        fig.set_size_inches(16*1.5, 9*1.5)
         if file_name is not None:
             if add_date_to_file_name:
                 file_name = self.today_str + '_' + file_name

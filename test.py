@@ -22,6 +22,7 @@ if __name__ == '__main__':
         season.season_report(file_name='season_report.html', add_date_to_file_name=True)
         season.probability_grid(file_name='prob_grid.png', add_date_to_file_name=True)
         season.points_probability_grid(file_name='pnt_prob_grid.png', add_date_to_file_name=True)
+        df = season.matches_remaining()
         if league == 'BPL':
             bpl = season
             my_team = season.teams['Manchester United']
