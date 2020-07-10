@@ -5,6 +5,7 @@ import time
 
 if __name__ == '__main__':
     base_dir = './'
+    output_dir = 'D:/output'
 
     settings = Settings(os.path.join(base_dir, 'config.yaml'))
     calib = Calibrator(settings)
@@ -14,7 +15,7 @@ if __name__ == '__main__':
 
     for league in settings.domestic_leagues:
         calib.calibrate_teams(league, year)
-        season = Season(league, year, calib, use_home_advantage=False, base_folder=base_dir)
+        season = Season(league, year, calib, use_home_advantage=False, base_folder=output_dir)
         print(league, 'home advantage', season.home_advantage)
         season.process_current_results()
         season.simulate_season(n_scenarios=100000)
