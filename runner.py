@@ -28,7 +28,3 @@ if __name__ == '__main__':
             bpl = season
             my_team = season.teams['Manchester United']
             bpl.team_report(my_team,file_name='mufc.png',add_date_to_file_name=True)
-
-
-    df = season.season_report()
-    tras = 1
