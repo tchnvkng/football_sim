@@ -4,8 +4,8 @@ import time
 
 
 if __name__ == '__main__':
-    base_dir = './'
-    output_dir = 'D:/output'
+    base_dir = os.path.dirname(os.path.realpath(__file__))
+    output_dir = '/Users/manuel/Library/Mobile Documents/com~apple~CloudDocs/Documents/football_sim'
 
     settings = Settings(os.path.join(base_dir, 'config.yaml'))
     calib = Calibrator(settings)
