@@ -21,7 +21,7 @@ class Settings:
 
 
 class Calibrator:
-    def __init__(self, settings, sigma_x=0.5, sigma_y=0.55):
+    def __init__(self, settings, sigma_x=0.45, sigma_y=0.5):
         self.raw_data = None
         self.fixtures = []
         self.teams = dict()
@@ -122,6 +122,8 @@ class Fixture:
         else:
             self.home_ag = np.mean(self.home_metrics)
             self.away_ag = np.mean(self.away_metrics)
+        # self.home_ag = self.home_goals
+        # self.away_ag = self.away_goals
 
         if np.isnan(self.home_ag) or np.isnan(self.away_ag):
             self.completed = False
@@ -689,6 +691,7 @@ class Season:
             _l, _t = self.teams[team_name].means()
             lmbd.append(_l)
             tau.append(_t)
+        strength = np.array(lmbd)/np.array(tau)
         tau = np.array(tau).round(2)
         lmbd = np.array(lmbd).round(2)
 
@@ -706,17 +709,18 @@ class Season:
                            'Win': p_win,
                            'Degr': p_degr,
                            'Off': lmbd,
-                           'Deff': tau},
+                           'Deff': tau,
+                           'rating':strength},
                           index=team_names)
         df = df.sort_values(by='Points (mean)', ascending=False)
         cols = ['Played', 'Points (current)', 'Points (mean)', 'Points (low)', 'Points (high)', 'Place (low)',
                 'Place (high)', 'Win', 'CL', 'Off',
-                'Deff', 'Degr']
+                'Deff', 'rating' , 'Degr']
         if file_name is not None:
             if add_date_to_file_name:
                 file_name=self.today_str+'_'+file_name
             file_name = os.path.join(self.output_folder,file_name)
-            df[cols].to_html(file_name,index=False)
+            df[cols].to_html(file_name)
 
         return df[cols]
 
