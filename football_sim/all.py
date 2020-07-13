@@ -308,7 +308,7 @@ class Team(object):
         match_des = self.name + ' vs ' + other_team.name
         return g_h, g_a, match_des
 
-    def plt(self, ax=None):
+    def plt(self, ax=None, colors=None):
         if ax is None:
 
             if self.bayesian:
@@ -322,18 +322,20 @@ class Team(object):
             ax[1].plot(self.tau_set, self.q, c=p1[0].get_color(), label=self.name + ' def: {:0.2f}'.format(t))
         else:
             ut = self.t
-            it = np.array([(x-self.t[0])/pd.Timedelta('1 day') for x in self.t])
+            it = np.array([(x - self.t[0]) / pd.Timedelta('1 day') for x in self.t])
             # it = np.arange(len(self.t))
-            p1 = ax[0].plot(it, self.offense_hist, label=self.name + ' off: {:0.2f}'.format(l))
+            if colors == None:
+                p1 = ax[0].plot(it, self.offense_hist, label=self.name + ' off: {:0.2f}'.format(l))
+                colors = [p1[0].get_color(), p1[0].get_color()]
+            else:
+                p1 = ax[0].plot(it, self.offense_hist, label=self.name + ' off: {:0.2f}'.format(l), color=colors[0])
             xticks = np.linspace(0, it.max(), 20)
-            labels = [ut[0] + (ut[-1] -ut[0]) * x for x in xticks / xticks.max()]
+            labels = [ut[0] + (ut[-1] - ut[0]) * x for x in xticks / xticks.max()]
             ax[0].set_xticks(xticks)
-            ax[0].set_xticklabels( [x.strftime('%Y-%m-%d') for x in labels],rotation=90)
-
-
-            ax[1].plot(it, self.defense_hist, c=p1[0].get_color(), label=self.name + ' def: {:0.2f}'.format(t))
+            ax[0].set_xticklabels([x.strftime('%Y-%m-%d') for x in labels], rotation=90)
+            ax[1].plot(it, self.defense_hist, c=colors[1], label=self.name + ' def: {:0.2f}'.format(t))
             ax[1].set_xticks(xticks)
-            ax[1].set_xticklabels([x.strftime('%Y-%m-%d') for x in labels],rotation=90)
+            ax[1].set_xticklabels([x.strftime('%Y-%m-%d') for x in labels], rotation=90)
 
 
         ax[0].legend()
@@ -745,7 +747,7 @@ class Season:
             team_names.append(name)
         # x = np.arange(int(b) + 1)
 
-        ind = T.max(axis=0) > 0
+        ind = T.max(axis=0) >= 0
 
         isort = np.argsort(self.points_per_team.mean(axis=1))
         T = T[isort, :]
@@ -870,23 +872,6 @@ class Season:
         ax[0, 0].bar(x, y)
         ax[0, 0].set_xticks(x)
         ax[0, 0].set_title('Place')
-        x, y = p_plot(self.points_per_team[self.team_id[team_name], :])
-        ax[0, 1].bar(x, y)
-        # ax[0, 1].bar(self.current_points[team_name], y.max())
-        ax[0, 1].axvline(x=self.current_points[team_name])
-        # xticks = ax[0, 1].get_xticks()
-        n = 10
-        a = np.min(x)
-        b = np.max(x)
-        if b - a > n:
-            d = np.ceil((b - a) / (n - 1))
-            xticks = np.arange(a, b + d, d)
-        else:
-            xticks = np.arange(a, b + 1)
-        ax[0, 1].set_xticks(xticks)
-        labels = ['{:0.0f} (+{:0.0f})'.format(x, x - self.current_points[team_name]) for x in xticks]
-        ax[0, 1].set_xticklabels(labels,rotation=90)
-        ax[0, 1].set_title('Points')
         x, y = p_plot(
             self.goals_per_team[self.team_id[team_name], :] - self.goals_against_per_team[self.team_id[team_name], :])
         ax[1, 0].bar(x, y)
@@ -900,39 +885,72 @@ class Season:
 
         # p0=league.current_points['Wolverhampton']
         # i = league.team_id['Wolverhampton']
+        x, y = p_plot(self.points_per_team[self.team_id[team_name], :])
+        ax[0, 1].bar(x, y)
+        # ax[0, 1].bar(self.current_points[team_name], y.max())
+        ax[0, 1].axvline(x=self.current_points[team_name])
+        # xticks = ax[0, 1].get_xticks()
 
         P = (self.points_per_team[i, :] - p0).astype(int)
         pp = np.unique(P)
-
+        n_to_play = len([x for x in self.matches_to_sim if team_name in [x.home_team.name, x.away_team.name]])
+        pp = np.arange(n_to_play*3+1)
         prob4 = []
         prob3 = []
         prob5 = []
         probp = []
+        p_x = []
         for p in pp:
             ind = (P == p)
             probp.append(ind.sum() / ind.size)
-            prob4.append(np.sum(self.place_per_team[i, ind] <= 4) / ind.sum())
-            prob3.append(np.sum(self.place_per_team[i, ind] <= 3) / ind.sum())
-            prob5.append(np.sum(self.place_per_team[i, ind] <= 5) / ind.sum())
+            if probp[-1]>0.1/100:
+                p_x.append(p+p0)
+                prob4.append(100*np.sum(self.place_per_team[i, ind] <= 4) / ind.sum())
+                prob3.append(100*np.sum(self.place_per_team[i, ind] <= 3) / ind.sum())
+                prob5.append(100*np.sum(self.place_per_team[i, ind] <= 5) / ind.sum())
 
         # C = len([x for x in self.matches_to_sim if team_name in [x.home_team.name, x.away_team.name]])
         C = 1
+        p_x=np.array(p_x)
+        ax[0, 1].plot(p_x / C, prob3,'.-', label='<=3')
+        ax[0, 1].plot(p_x / C, prob4,'.-', label='<=4')
+        # ax[0, 1].plot(p_x / C, prob5,'.-', label='<=5')
 
-        ax[1, 1].plot(pp / C, prob3, label='<=3')
-        ax[1, 1].plot(pp / C, prob4, label='<=4')
-        ax[1, 1].plot(pp / C, prob5, label='<=5')
-        ax[1, 1].set_title('Probabilities')
-        ax[1, 1].legend()
-
+        #ax[1, 1].set_title('Probabilities')
+        ax[0, 1].legend()
+        #ax[1, 1].set_xlim([0,n_to_play*3])
+        n = 10
+        a = np.min(x)
+        b = np.max(x)
+        if b - a > n:
+            d = np.ceil((b - a) / (n - 1))
+            xticks = np.arange(a, b + d, d)
+        else:
+            xticks = np.arange(a, b + 1)
+        ax[0, 1].set_xticks(xticks)
+        labels = ['{:0.0f} (+{:0.0f})'.format(x, x - self.current_points[team_name]) for x in xticks]
+        ax[0, 1].set_xticklabels(labels, rotation=90)
+        ax[0, 1].set_title('Points')
+        ax1=ax[1,1]
+        ax2 = ax1.twinx()
+        colors = ['C0','C1']
+        team.plt(ax=[ax1,ax2],colors = colors)
+        ax2.set_ylabel('Defense', color=colors[1])  # we already handled the x-label with ax1
+        ax2.tick_params(axis='y', labelcolor=colors[1])
+        ax1.set_ylabel('Offense', color=colors[0])  # we already handled the x-label with ax1
+        ax1.tick_params(axis='y', labelcolor=colors[0])
         for _i in ax:
             for _j in _i:
                 _j.grid(True)
 
         fig.set_size_inches(16*1.5, 9*1.5)
         if file_name is not None:
+            folder = os.path.join(self.output_folder, team_name.replace(' ',''))
+            if not os.path.isdir(folder):
+                os.mkdir(folder)
             if add_date_to_file_name:
                 file_name = self.today_str + '_' + file_name
-            file_name = os.path.join(self.output_folder, file_name)
+            file_name = os.path.join(folder, file_name)
             fig.savefig(file_name)
 
 

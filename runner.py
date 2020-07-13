@@ -26,5 +26,6 @@ if __name__ == '__main__':
         df = season.matches_remaining()
         if league == 'BPL':
             bpl = season
-            my_team = season.teams['Manchester United']
-            bpl.team_report(my_team,file_name='mufc.png',add_date_to_file_name=True)
+            for team_name in ['Manchester United','Chelsea','Leicester City']:
+                team = season.teams[team_name]
+                bpl.team_report(team,file_name=team_name.replace(' ','')+'.png',add_date_to_file_name=True)
