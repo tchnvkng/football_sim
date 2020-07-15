@@ -9,3 +9,7 @@ SPD:
 ISA: 
     nr_cl: 4
     nr_deg: 3
+
+ELC:
+    nr_cl: 2
+    nr_deg: 3

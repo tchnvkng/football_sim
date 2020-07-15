@@ -897,7 +897,8 @@ class Season:
         pp = np.arange(n_to_play*3+1)
         prob4 = []
         prob3 = []
-        prob5 = []
+        prob2 = []
+        prob1 = []
         probp = []
         p_x = []
         for p in pp:
@@ -907,11 +908,14 @@ class Season:
                 p_x.append(p+p0)
                 prob4.append(100*np.sum(self.place_per_team[i, ind] <= 4) / ind.sum())
                 prob3.append(100*np.sum(self.place_per_team[i, ind] <= 3) / ind.sum())
-                prob5.append(100*np.sum(self.place_per_team[i, ind] <= 5) / ind.sum())
+                prob2.append(100*np.sum(self.place_per_team[i, ind] <= 2) / ind.sum())
+                prob1.append(100 * np.sum(self.place_per_team[i, ind] <= 1) / ind.sum())
 
         # C = len([x for x in self.matches_to_sim if team_name in [x.home_team.name, x.away_team.name]])
         C = 1
         p_x=np.array(p_x)
+        ax[0, 1].plot(p_x / C, prob1, '.-', label='<=1')
+        ax[0, 1].plot(p_x / C, prob2, '.-', label='<=2')
         ax[0, 1].plot(p_x / C, prob3,'.-', label='<=3')
         ax[0, 1].plot(p_x / C, prob4,'.-', label='<=4')
         # ax[0, 1].plot(p_x / C, prob5,'.-', label='<=5')
