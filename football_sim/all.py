@@ -31,9 +31,10 @@ class Calibrator:
         self.sigma_x = sigma_x
         self.sigma_y = sigma_y
         self.file_name = 'calibrator.pkl'
+        self.initialized=[]
 
-    def calibrate_teams(self, league, year):
-        completed_fixtures = self.get_fixtures_for_league(league, year - 1, completed=True)
+    def initialize_calibration(self, league, year):
+        completed_fixtures = self.get_completed_fixtures(league, year - 1)
         dates = [f.date for f in completed_fixtures]
         is_sorted = np.all(dates[:-1] <= dates[1:])
         assert is_sorted
@@ -43,7 +44,12 @@ class Calibrator:
             f.away_team.forget_history()
             f.league_home_team.forget_history()
             f.league_away_team.forget_history()
-        completed_fixtures = self.get_fixtures_for_league(league, year, completed=True)
+        self.initialized.append([league, year])
+
+    def calibrate_teams(self, league, year, as_of=None):
+        if [league,year] not in self.initialized:
+            self.initialize_calibration(league,year)
+        completed_fixtures = self.get_completed_fixtures(league, year, as_of=as_of)
         dates = [f.date for f in completed_fixtures]
         is_sorted = np.all(dates[:-1] <= dates[1:])
         assert is_sorted
@@ -53,11 +59,20 @@ class Calibrator:
         for team in self.teams.values():
             team.reset()
 
-    def get_fixtures_for_league(self, league_name, year, completed=None):
-        if completed is None:
-            return [f for f in self.fixtures if f.year == year and f.league == league_name]
+    def get_completed_fixtures(self, league_name, year, as_of=None):
+        all_fixtures = self.get_fixtures_for_league(league_name, year)
+        if as_of is None:
+            return [f for f in all_fixtures if f.completed]
         else:
-            return [f for f in self.fixtures if f.year == year and f.league == league_name and f.completed == completed]
+            return [f for f in all_fixtures if f.completed and f.date <= as_of]
+
+    def get_remaining_fixtures(self, league_name, year, as_of=None):
+        all_fixtures = self.get_fixtures_for_league(league_name, year)
+        completed_fixtures = self.get_completed_fixtures(league_name, year, as_of=as_of)
+        return [f for f in all_fixtures if f not in completed_fixtures]
+
+    def get_fixtures_for_league(self, league_name, year):
+        return [f for f in self.fixtures if f.year == year and f.league == league_name]
 
     def get_teams_for_league(self, league_name, year):
         fixtures = self.get_fixtures_for_league(league_name, year)
@@ -142,6 +157,7 @@ class Fixture:
         self.forecast_draw = None
         self.forecast_result = None
         self.forecast_probability = None
+        self.used_for_calibrating = False
 
     def set_teams(self, calibrator):
         self.home_team = calibrator.get_team(self.league, self.home_team_name)
@@ -163,7 +179,7 @@ class Fixture:
         return gh, ga, des
 
     def update_teams(self, update_forecast=False):
-        if (~np.isnan(self.home_ag)) & (~np.isnan(self.away_ag)):
+        if (~np.isnan(self.home_ag)) & (~np.isnan(self.away_ag)) & (~self.used_for_calibrating):
             if update_forecast:
                 self.simulate()
 
@@ -175,6 +191,7 @@ class Fixture:
             self.league_away_team.t.append(self.date)
             self.league_home_team.scored_against(self.league_away_team, self.home_ag)
             self.league_away_team.scored_against(self.league_home_team, self.away_ag)
+            self.used_for_calibrating = True
         return self
 
     def __repr__(self):
@@ -387,7 +404,8 @@ def p_plot(x):
 
 
 class Season:
-    def __init__(self, name, year, calibrator, use_home_advantage=True, base_folder='./'):
+    def __init__(self, name, year, calibrator, use_home_advantage=True, base_folder='./',as_of = None):
+        self.as_of = as_of
         self.output_folder = os.path.join(base_folder, name)
         self.today = pd.to_datetime('today')
         self.today_str = self.today.strftime('%Y-%m-%d')
@@ -436,7 +454,7 @@ class Season:
         self.league_start = None
 
     def process_current_results(self):
-        completed_fixtures = self.calibrator.get_fixtures_for_league(self.name, self.year, completed=True)
+        completed_fixtures = self.calibrator.get_completed_fixtures(self.name, self.year, as_of=self.as_of)
         self.league_start = np.min([f.date for f in completed_fixtures])
         for f in completed_fixtures:
             home_goals = f.home_goals
@@ -459,7 +477,7 @@ class Season:
                 self.current_points[home_team] += 1
                 self.current_points[away_team] += 1
 
-        self.matches_to_sim = self.calibrator.get_fixtures_for_league(self.name, self.year, completed=False)
+        self.matches_to_sim = self.calibrator.get_remaining_fixtures(self.name, self.year, as_of=self.as_of)
         self.match_id = {match.id: i for i, match in enumerate(self.matches_to_sim)}
 
     def matches_remaining(self, team_filter=('',)):
@@ -659,7 +677,7 @@ class Season:
         self.goals_against_per_team = goals_against_per_team
         self.simulation_processed = True
 
-    def season_report(self, ind=None, file_name=None, add_date_to_file_name=False):
+    def season_report(self, ind=None, file_name=None):
         if not self.simulation_done:
             print('simulation not yet done, simulating')
             self.simulate_season()
@@ -721,14 +739,16 @@ class Season:
                 'Place (high)', 'Win', 'CL', 'Off',
                 'Deff', 'rating' , 'Degr']
         if file_name is not None:
-            if add_date_to_file_name:
-                file_name=self.today_str+'_'+file_name
-            file_name = os.path.join(self.output_folder,file_name)
+            if self.as_of is None:
+                file_name = file_name + '_' + self.today_str
+            else:
+                file_name = file_name + '_' + self.as_of.strftime('%Y-%m-%d')
+            file_name = os.path.join(self.output_folder, file_name+'.html')
             df[cols].to_html(file_name)
 
         return df[cols]
 
-    def points_probability_grid(self, ind=None, file_name=None, add_date_to_file_name=False):
+    def points_probability_grid(self, ind=None, file_name=None):
         if ind is None:
             ind = np.ones(self.points_per_team.shape[1]).astype(bool)
         x0 = self.points_per_team.min() - 1
@@ -773,21 +793,25 @@ class Season:
         plt.ylim([-0.5, self.nr_teams - 0.5])
         current_points = np.array([self.current_points[x] for x in team_names])
         # y = [[i for i, a in enumerate(zip(bins[0:-1], bins[1:])) if a[0] <= x < a[1]][0] for x in current_points]
-        y = [[(i + (x - a[0]) / (a[1] - a[0]) - 0.5) for i, a in enumerate(zip(bins[0:-1], bins[1:])) if
-              a[0] <= x < a[1]][0] for x in current_points]
+        # y = [[(i + (x - a[0]) / (a[1] - a[0]) - 0.5) for i, a in enumerate(zip(bins[0:-1], bins[1:])) if  a[0] <= x < a[1]][0] for x in current_points]
+        f_points = lambda x: -0.5 + (x - bins.min()) / (bins.max() - bins.min()) * ind.sum()
+        y = f_points(current_points)
         plt.plot(y, np.arange(self.nr_teams), 'r.')
         # plt.xticks(np.arange(ind.sum()), x, rotation='vertical')
         plt.xticks(np.arange(len(labels)), labels, rotation='vertical');
-        plt.yticks(np.arange(len(team_names)), team_names)
+        labels_ = ['{:s} ({:0.0f})'.format(nm, pnt) for nm, pnt in zip(team_names, current_points)]
+        plt.yticks(np.arange(len(team_names)), labels_)
         # plt.grid(True)
         if file_name is not None:
-            if add_date_to_file_name:
-                file_name = self.today_str + '_' + file_name
-            file_name = os.path.join(self.output_folder, file_name)
+            if self.as_of is None:
+                file_name = file_name + '_' + self.today_str
+            else:
+                file_name = file_name + '_' + self.as_of.strftime('%Y-%m-%d')
+            file_name = os.path.join(self.output_folder, file_name+'.png')
             fig.savefig(file_name)
         return team_names, T, fig
 
-    def probability_grid(self, ind=None, title='', file_name=None, add_date_to_file_name=False):
+    def probability_grid(self, ind=None, title='', file_name=None):
         if not self.simulation_done:
             print('simulation not yet done, simulating')
             self.simulate_season()
@@ -854,14 +878,16 @@ class Season:
         plt.title(title)
         fig.set_size_inches(16, 12)
         if file_name is not None:
-            if add_date_to_file_name:
-                file_name = self.today_str + '_' + file_name
-            file_name = os.path.join(self.output_folder, file_name)
+            if self.as_of is None:
+                file_name = file_name + '_' + self.today_str
+            else:
+                file_name = file_name + '_' + self.as_of.strftime('%Y-%m-%d')
+            file_name = os.path.join(self.output_folder, file_name+'.png')
             fig.savefig(file_name)
 
         return team_names, T, fig
 
-    def team_report(self, team,file_name=None,add_date_to_file_name=False):
+    def team_report(self, team,file_name=None):
         if not self.simulation_done:
             print('simulation not yet done, simulating')
             self.simulate_season()
@@ -954,9 +980,12 @@ class Season:
             folder = os.path.join(self.output_folder, team_name.replace(' ',''))
             if not os.path.isdir(folder):
                 os.mkdir(folder)
-            if add_date_to_file_name:
+            if self.as_of is None:
                 file_name = self.today_str + '_' + file_name
-            file_name = os.path.join(folder, file_name)
+            else:
+                file_name = self.as_of.strftime('%Y-%m-%d') + '_' + file_name
+            file_name = os.path.join(folder, file_name+'.png')
             fig.savefig(file_name)
+            plt.close(fig=fig)
 
 
