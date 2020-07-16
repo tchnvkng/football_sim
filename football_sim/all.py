@@ -440,7 +440,11 @@ class Season:
         self.team_id = dict()
         self.inv_team_id = dict()
         i = 0
+        self.current_modified_points = dict()
+        self.current_place_per_team = dict()
+
         for _team in self.teams:
+            self.current_modified_points[_team] = 0
             self.team_id[_team] = i
             self.inv_team_id[i] = _team
             self.current_goals[_team] = 0
@@ -476,6 +480,31 @@ class Season:
             else:
                 self.current_points[home_team] += 1
                 self.current_points[away_team] += 1
+
+        gd = [self.current_goals[x] - self.current_goals_against[x] for x in self.current_goals]
+        a = np.min(gd)
+        b = np.max(gd)
+        g = [self.current_goals[x]  for x in self.current_goals]
+        c = np.min(g)
+        d = np.max(g)
+        for team_name in self.current_points:
+            self.current_modified_points[team_name] += self.current_points[team_name]
+            g_ = self.current_goals[team_name]
+            gd_ = g_ - self.current_goals_against[team_name]
+            self.current_modified_points[team_name] += 0.1 * (gd_ - a) / (b - a)
+            self.current_modified_points[team_name] += 0.01 * (g_ - c) / (d - c)
+            self.current_modified_points[team_name] += 0.001 * np.random.random()
+
+        team_names = []
+        mp = []
+        for team_name,p in self.current_modified_points.items():
+            team_names.append(team_name)
+            mp.append(p)
+        i_sort = np.argsort(-np.array(mp))
+        sorted_teams = np.array(team_names)[i_sort]
+
+        for i,team_name in enumerate(sorted_teams):
+            self.current_place_per_team[team_name] = i+1
 
         self.matches_to_sim = self.calibrator.get_remaining_fixtures(self.name, self.year, as_of=self.as_of)
         self.match_id = {match.id: i for i, match in enumerate(self.matches_to_sim)}
@@ -899,12 +928,16 @@ class Season:
         x, y = p_plot(self.place_per_team[self.team_id[team_name], :])
         ax[0, 0].bar(x, y)
         ax[0, 0].set_xticks(x)
-        ax[0, 0].set_title('Place')
+        ax[0, 0].set_title('Place: {:0.0f}'.format(self.current_place_per_team[team_name]))
+        ax[0, 0].grid(True)
         x, y = p_plot(
             self.goals_per_team[self.team_id[team_name], :] - self.goals_against_per_team[self.team_id[team_name], :])
         ax[1, 0].bar(x, y)
-        ax[1, 0].bar(self.current_goals[team_name] - self.current_goals_against[team_name], y.max())
-        ax[1, 0].set_title('Goal Difference')
+        # ax[1, 0].bar(self.current_goals[team_name] - self.current_goals_against[team_name], y.max())
+        gd = self.current_goals[team_name]-self.current_goals_against[team_name]
+        ax[1, 0].axvline(x=gd)
+        ax[1, 0].set_title('Goal Difference: {:0.0f}'.format(gd))
+        ax[1, 0].grid(True)
         # x, y = p_plot(self.goals_per_team[self.team_id[team_name], :])
         team_name = team.name
         p0 = self.current_points[team_name]
@@ -946,6 +979,7 @@ class Season:
         ax[0, 1].plot(p_x / C, prob2, '.-', label='<=2')
         ax[0, 1].plot(p_x / C, prob3,'.-', label='<=3')
         ax[0, 1].plot(p_x / C, prob4,'.-', label='<=4')
+        ax[0, 1].grid(True)
         # ax[0, 1].plot(p_x / C, prob5,'.-', label='<=5')
 
         #ax[1, 1].set_title('Probabilities')
@@ -960,20 +994,19 @@ class Season:
         else:
             xticks = np.arange(a, b + 1)
         ax[0, 1].set_xticks(xticks)
-        labels = ['{:0.0f} (+{:0.0f})'.format(x, x - self.current_points[team_name]) for x in xticks]
+        labels = ['+{:0.0f} = {:0.1f}/g'.format(x - self.current_points[team_name],( x - self.current_points[team_name])/n_to_play) for x in xticks]
         ax[0, 1].set_xticklabels(labels, rotation=90)
-        ax[0, 1].set_title('Points')
+        ax[0, 1].set_title('Points: {:0.0f}'.format(self.current_points[team_name]))
         ax1=ax[1,1]
         ax2 = ax1.twinx()
         colors = ['C0','C1']
-        team.plt(ax=[ax1,ax2],colors = colors)
+        team.plt(ax=[ax1, ax2], colors=colors)
         ax2.set_ylabel('Defense', color=colors[1])  # we already handled the x-label with ax1
         ax2.tick_params(axis='y', labelcolor=colors[1])
         ax1.set_ylabel('Offense', color=colors[0])  # we already handled the x-label with ax1
         ax1.tick_params(axis='y', labelcolor=colors[0])
-        for _i in ax:
-            for _j in _i:
-                _j.grid(True)
+        ax1.grid(color=colors[0], alpha=0.5)
+        ax2.grid(color=colors[1], alpha=0.5)
 
         fig.set_size_inches(16*1.5, 9*1.5)
         if file_name is not None:
