@@ -1,11 +1,14 @@
 from football_sim.all import Calibrator, Settings, Season
 import os
-import time
+import platform
 
 if __name__ == '__main__':
     base_dir = os.path.dirname(os.path.realpath(__file__))
-    # output_dir = '/Users/manuel/Library/Mobile Documents/com~apple~CloudDocs/Documents/football_sim'
-    output_dir = r'D:\output'
+    if platform.node() == 'Speedy':
+        output_dir = r'D:\output'
+    else:
+        output_dir = '/Users/manuel/Library/Mobile Documents/com~apple~CloudDocs/Documents/football_sim'
+
     settings = Settings(os.path.join(base_dir, 'config.yaml'))
     calib = Calibrator(settings)
     year = 2019
