@@ -6,15 +6,15 @@ import matplotlib.pyplot as plt
 
 if __name__ == '__main__':
     dates = []
-    dates = dates  + ['2019-09-30', '2019-10-30', '2019-11-30', '2019-12-30', '2020-01-30', '2020-02-28', '2020-03-30', '2020-04-30', '2020-05-30', '2020-06-30']
-    dates = dates + ['2020-07-01', '2020-07-08', '2020-07-09', '2020-07-10', '2020-07-11', '2020-07-12', '2020-07-13', '2020-07-14', '2020-07-15']
-    as_ofs = [pd.to_datetime(x) for x in dates]
-    as_ofs.append(None)
     base_dir = os.path.dirname(os.path.realpath(__file__))
     if platform.node() == 'Speedy':
+        dates = dates + ['2019-09-30', '2019-10-30', '2019-11-30', '2019-12-30', '2020-01-30', '2020-02-28', '2020-03-30', '2020-04-30', '2020-05-30', '2020-06-30']
+        dates = dates + ['2020-07-01', '2020-07-08', '2020-07-09', '2020-07-10', '2020-07-11', '2020-07-12', '2020-07-13', '2020-07-14', '2020-07-15']
         output_dir = r'D:\output'
     else:
         output_dir = '/Users/manuel/Library/Mobile Documents/com~apple~CloudDocs/Documents/football_sim'
+    as_ofs = [pd.to_datetime(x) for x in dates]
+    as_ofs.append(None)
 
     settings = Settings(os.path.join(base_dir, 'config.yaml'))
     calib = Calibrator(settings)
