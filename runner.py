@@ -7,20 +7,24 @@ import matplotlib.pyplot as plt
 if __name__ == '__main__':
     dates = []
     base_dir = os.path.dirname(os.path.realpath(__file__))
-    if platform.node() == 'Speedy':
-        dates = dates + ['2019-09-30', '2019-10-30', '2019-11-30', '2019-12-30', '2020-01-30', '2020-02-28', '2020-03-30', '2020-04-30', '2020-05-30', '2020-06-30']
-        dates = dates + ['2020-07-01', '2020-07-08', '2020-07-09', '2020-07-10', '2020-07-11', '2020-07-12', '2020-07-13', '2020-07-14', '2020-07-15']
+    if platform.node() == 'TokenBlack':
+        # dates = dates + ['2019-09-30', '2019-10-30', '2019-11-30', '2019-12-30', '2020-01-30', '2020-02-28', '2020-03-30', '2020-04-30', '2020-05-30', '2020-06-30']
+        # dates = dates + ['2020-07-01', '2020-07-08', '2020-07-09', '2020-07-10', '2020-07-11', '2020-07-12', '2020-07-13', '2020-07-14', '2020-07-15']
         output_dir = r'D:\output'
     else:
         output_dir = '/Users/manuel/Library/Mobile Documents/com~apple~CloudDocs/Documents/football_sim'
+    print(output_dir)
     as_ofs = [pd.to_datetime(x) for x in dates]
     as_ofs.append(None)
-
     settings = Settings(os.path.join(base_dir, 'config.yaml'))
     calib = Calibrator(settings)
-    year = 2019
+    year = 2020
     calib.download_all_data()
     calib.process_data()
+    # f = [f for f in calib.fixtures if f.league == 'BPL' and f.year == 2019 and 'Cry' in f.home_team.name and 'Manchester U' in f.away_team.name][0]
+    # f.home_goals = 0
+    # f.away_goals = 2
+    # f.completed = True
     for as_of in as_ofs:
         print(as_of)
         for league in settings.domestic_leagues:
@@ -34,7 +38,7 @@ if __name__ == '__main__':
             season.probability_grid(file_name='prob_grid')
             season.points_probability_grid(file_name='pnt_prob_grid')
             df = season.matches_remaining()
-            for team_name in ['Manchester United', 'Chelsea', 'Leicester City', 'Juventus', 'Real Madrid', 'Barcelona', 'Lazio', 'Atalanta', 'Leeds United']:
+            for team_name in []:
                 if team_name in season.teams:
                     print(league, team_name)
                     team = season.teams[team_name]

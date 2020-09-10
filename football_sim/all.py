@@ -287,9 +287,9 @@ class Team(object):
         self.q = (1 - p_mix) * self.q + p_mix / self.q.shape[0]
         self.normalize()
 
-    def outcomes_vs(self, other_team, n_scenarios=int(1e5), home_advantage=1):
+    def outcomes_vs(self, other_team, n_scenarios=int(1e5), home_advantage=1, t=90, g_h=0, g_a=0):
         g = np.zeros([n_scenarios, 2])
-        g[:, 0], g[:, 1], _ = self.vs(other_team, n=n_scenarios, home_advantage=home_advantage)
+        g[:, 0], g[:, 1], _ = self.vs(other_team, n=n_scenarios, home_advantage=home_advantage, t=t, g_h=g_h, g_a=g_a)
         u, c = np.unique(g, axis=0, return_counts=True)
         loc = (-c).argsort()
         u = u[loc, :]
@@ -311,18 +311,19 @@ class Team(object):
         gmean = g.mean(axis=0)
         plt.title('{} ({:.2f}) vs {} ({:.2f})'.format(self.name, gmean[0], other_team.name, gmean[1]))
 
-    def vs(self, other_team, n=int(1e4), home_advantage=1):
+    def vs(self, other_team, n=int(1e4), home_advantage=1, t=90, g_h=0, g_a=0):
+
         if self.bayesian:
-            l_h = np.random.choice(self.lmbd_set, size=n, p=self.p) * np.random.choice(other_team.tau_set, size=n, p=other_team.q) * home_advantage
-            l_a = np.random.choice(other_team.lmbd_set, size=n, p=other_team.p) * np.random.choice(self.tau_set, size=n, p=self.q)
-            g_h = np.random.poisson(l_h)
-            g_a = np.random.poisson(l_a)
+            l_h = (t/90)*np.random.choice(self.lmbd_set, size=n, p=self.p) * np.random.choice(other_team.tau_set, size=n, p=other_team.q) * home_advantage
+            l_a = (t/90)*np.random.choice(other_team.lmbd_set, size=n, p=other_team.p) * np.random.choice(self.tau_set, size=n, p=self.q)
+            g_h += np.random.poisson(l_h)
+            g_a += np.random.poisson(l_a)
         else:
 
-            l_h = self.offense * other_team.defense * home_advantage
-            l_a = other_team.offense * self.defense
-            g_h = np.random.poisson(l_h, n)
-            g_a = np.random.poisson(l_a, n)
+            l_h = (t/90)*self.offense * other_team.defense * home_advantage
+            l_a = (t/90)*other_team.offense * self.defense
+            g_h += np.random.poisson(l_h, n)
+            g_a += np.random.poisson(l_a, n)
 
         match_des = self.name + ' vs ' + other_team.name
         return g_h, g_a, match_des
@@ -459,7 +460,10 @@ class Season:
 
     def process_current_results(self):
         completed_fixtures = self.calibrator.get_completed_fixtures(self.name, self.year, as_of=self.as_of)
-        self.league_start = np.min([f.date for f in completed_fixtures])
+        if len(completed_fixtures)>0:
+            self.league_start = np.min([f.date for f in completed_fixtures])
+        else:
+            self.league_start = pd.to_datetime('today')
         for f in completed_fixtures:
             home_goals = f.home_goals
             away_goals = f.away_goals
@@ -786,8 +790,8 @@ class Season:
         step = np.floor(step).astype(int)
         bins = np.arange(x0, x1, step).astype(int)
         # bins = np.unique(np.round(np.linspace(self.points_per_team.min()-1,self.points_per_team.max()+1,int(1+1.5*self.nr_teams))).astype(int))
-
         labels = ['[{:d},{:d})'.format(a, b) for a, b in zip(bins[0:-1], bins[1:])]
+
 
         T = np.zeros([self.nr_teams, bins.size - 1])
         team_names = []
@@ -916,7 +920,9 @@ class Season:
 
         return team_names, T, fig
 
-    def team_report(self, team,file_name=None):
+    def team_report(self, team, file_name=None, places=None):
+        if places is None:
+            places = [1, self.nr_cl, self.nr_teams - self.nr_degr]
         if not self.simulation_done:
             print('simulation not yet done, simulating')
             self.simulate_season()
@@ -956,10 +962,13 @@ class Season:
         pp = np.unique(P)
         n_to_play = len([x for x in self.matches_to_sim if team_name in [x.home_team.name, x.away_team.name]])
         pp = np.arange(n_to_play*3+1)
-        prob4 = []
-        prob3 = []
-        prob2 = []
-        prob1 = []
+        probs = dict()
+        for plc in places:
+            probs[plc]=[]
+        #prob4 = []
+        #prob3 = []
+        #prob2 = []
+        #prob1 = []
         probp = []
         p_x = []
         for p in pp:
@@ -967,18 +976,24 @@ class Season:
             probp.append(ind.sum() / ind.size)
             if probp[-1]>0.1/100:
                 p_x.append(p+p0)
-                prob4.append(100*np.sum(self.place_per_team[i, ind] <= 4) / ind.sum())
-                prob3.append(100*np.sum(self.place_per_team[i, ind] <= 3) / ind.sum())
-                prob2.append(100*np.sum(self.place_per_team[i, ind] <= 2) / ind.sum())
-                prob1.append(100 * np.sum(self.place_per_team[i, ind] <= 1) / ind.sum())
+                for _plc,_prob in probs.items():
+                    _prob.append(100 * np.sum(self.place_per_team[i, ind] <= _plc) / ind.sum())
+
+                #prob4.append(100*np.sum(self.place_per_team[i, ind] <= 4) / ind.sum())
+                #prob3.append(100*np.sum(self.place_per_team[i, ind] <= 3) / ind.sum())
+                #prob2.append(100*np.sum(self.place_per_team[i, ind] <= 2) / ind.sum())
+                #prob1.append(100 * np.sum(self.place_per_team[i, ind] <= 1) / ind.sum())
 
         # C = len([x for x in self.matches_to_sim if team_name in [x.home_team.name, x.away_team.name]])
         C = 1
         p_x=np.array(p_x)
-        ax[0, 1].plot(p_x / C, prob1, '.-', label='<=1')
-        ax[0, 1].plot(p_x / C, prob2, '.-', label='<=2')
-        ax[0, 1].plot(p_x / C, prob3,'.-', label='<=3')
-        ax[0, 1].plot(p_x / C, prob4,'.-', label='<=4')
+        #ax[0, 1].plot(p_x / C, prob1, '.-', label='<=1')
+        #ax[0, 1].plot(p_x / C, prob2, '.-', label='<=2')
+        #ax[0, 1].plot(p_x / C, prob3,'.-', label='<=3')
+        #ax[0, 1].plot(p_x / C, prob4,'.-', label='<=4')
+        for _plc, _prob in probs.items():
+            if (np.min(_prob) < 99.99) and (np.max(_prob) > 0.01):
+                ax[0, 1].plot(p_x / C, _prob, '.-', label='<={:0.0f}'.format(_plc))
         ax[0, 1].grid(True)
         # ax[0, 1].plot(p_x / C, prob5,'.-', label='<=5')
 

@@ -2,14 +2,27 @@ BPL:
     nr_cl: 4
     nr_deg: 3
 
-SPD: 
-    nr_cl: 4
+FL1:
+    nr_cl: 3
     nr_deg: 3
-    
-ISA: 
+
+SPD:
     nr_cl: 4
     nr_deg: 3
 
-ELC:
+ISA:
+    nr_cl: 4
+    nr_deg: 3
+
+GB:
+    nr_cl: 4
+    nr_deg: 3
+DE:
     nr_cl: 2
     nr_deg: 3
+ELC:
+    nr_cl: 3
+    nr_deg: 3
+PL:
+    nr_cl: 2
+    nr_deg: 2
