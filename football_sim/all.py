@@ -44,6 +44,13 @@ class Calibrator:
             f.away_team.forget_history()
             f.league_home_team.forget_history()
             f.league_away_team.forget_history()
+        teams = self.get_teams_for_league(league, year)
+        mean_offense = np.mean([t.offense for t in teams.values() if t.is_calibrated])
+        mean_defense = np.mean([t.defense for t in teams.values() if t.is_calibrated])
+        for t in teams.values():
+            if not t.is_calibrated:
+                t.offense = mean_offense
+                t.defense = mean_defense
         self.initialized.append([league, year])
 
     def calibrate_teams(self, league, year, as_of=None):
@@ -231,6 +238,7 @@ class Team(object):
         self.sigma_y = sigma_y
 
         self.bayesian = False
+        self.is_calibrated = False
 
     def set_x(self, x):
         self.x = x
@@ -341,21 +349,22 @@ class Team(object):
             p1 = ax[0].plot(self.lmbd_set, self.p, label=self.name + ' off: {:0.2f}'.format(l))
             ax[1].plot(self.tau_set, self.q, c=p1[0].get_color(), label=self.name + ' def: {:0.2f}'.format(t))
         else:
-            ut = self.t
-            it = np.array([(x - self.t[0]) / pd.Timedelta('1 day') for x in self.t])
-            # it = np.arange(len(self.t))
-            if colors == None:
-                p1 = ax[0].plot(it, self.offense_hist, label=self.name + ' off: {:0.2f}'.format(l))
-                colors = [p1[0].get_color(), p1[0].get_color()]
-            else:
-                p1 = ax[0].plot(it, self.offense_hist, label=self.name + ' off: {:0.2f}'.format(l), color=colors[0])
-            xticks = np.linspace(0, it.max(), 20)
-            labels = [ut[0] + (ut[-1] - ut[0]) * x for x in xticks / xticks.max()]
-            ax[0].set_xticks(xticks)
-            ax[0].set_xticklabels([x.strftime('%Y-%m-%d') for x in labels], rotation=90)
-            ax[1].plot(it, self.defense_hist, c=colors[1], label=self.name + ' def: {:0.2f}'.format(t))
-            ax[1].set_xticks(xticks)
-            ax[1].set_xticklabels([x.strftime('%Y-%m-%d') for x in labels], rotation=90)
+            if len(self.t)>0:
+                ut = self.t
+                it = np.array([(x - self.t[0]) / pd.Timedelta('1 day') for x in self.t])
+                # it = np.arange(len(self.t))
+                if colors == None:
+                    p1 = ax[0].plot(it, self.offense_hist, label=self.name + ' off: {:0.2f}'.format(l))
+                    colors = [p1[0].get_color(), p1[0].get_color()]
+                else:
+                    p1 = ax[0].plot(it, self.offense_hist, label=self.name + ' off: {:0.2f}'.format(l), color=colors[0])
+                xticks = np.linspace(0, it.max(), 20)
+                labels = [ut[0] + (ut[-1] - ut[0]) * x for x in xticks / xticks.max()]
+                ax[0].set_xticks(xticks)
+                ax[0].set_xticklabels([x.strftime('%Y-%m-%d') for x in labels], rotation=90)
+                ax[1].plot(it, self.defense_hist, c=colors[1], label=self.name + ' def: {:0.2f}'.format(t))
+                ax[1].set_xticks(xticks)
+                ax[1].set_xticklabels([x.strftime('%Y-%m-%d') for x in labels], rotation=90)
 
 
         ax[0].legend()
@@ -391,6 +400,7 @@ class Team(object):
         sol = minimize(self.target_fun, np.array([self.x, other.y]), args=(other, k))
         self.set_x(sol.x[0])
         other.set_y(sol.x[1])
+        self.is_calibrated = True
 
 
 def p_plot(x):
@@ -415,7 +425,7 @@ class Season:
         self.name = name
         self.year = year
         self.calibrator = calibrator
-        self.teams = calibrator.get_teams_for_league(name, year)
+
         if use_home_advantage:
             league_home_team = calibrator.get_team(self.name + '_', self.name + 'Home')
             league_away_team = calibrator.get_team(self.name + '_', self.name + 'Away')
@@ -427,6 +437,7 @@ class Season:
         info = calibrator.settings.get_info(self.name)
         self.nr_cl = info['nr_cl']
         self.nr_degr = info['nr_deg']
+        self.teams = calibrator.get_teams_for_league(name, year)
         self.nr_teams = len(self.teams)
         self.all_matches = None
         self.matches_to_sim = None

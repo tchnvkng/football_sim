@@ -38,7 +38,7 @@ if __name__ == '__main__':
             season.probability_grid(file_name='prob_grid')
             season.points_probability_grid(file_name='pnt_prob_grid')
             df = season.matches_remaining()
-            for team_name in []:
+            for team_name in ['Manchester United']:
                 if team_name in season.teams:
                     print(league, team_name)
                     team = season.teams[team_name]
