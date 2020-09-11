@@ -45,8 +45,8 @@ class Calibrator:
             f.league_home_team.forget_history()
             f.league_away_team.forget_history()
         teams = self.get_teams_for_league(league, year)
-        mean_offense = np.mean([t.offense for t in teams.values() if t.is_calibrated])
-        mean_defense = np.mean([t.defense for t in teams.values() if t.is_calibrated])
+        mean_offense = np.percentile([t.offense for t in teams.values() if t.is_calibrated],25)
+        mean_defense = np.percentile([t.defense for t in teams.values() if t.is_calibrated],75)
         for t in teams.values():
             if not t.is_calibrated:
                 t.offense = mean_offense
