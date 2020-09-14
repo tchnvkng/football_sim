@@ -236,11 +236,22 @@ class Team(object):
         self.offense = self.lambda_fun(self.x)
         self.defense = self.p_fun(self.y)
 
-        self.sigma_x = sigma_x
-        self.sigma_y = sigma_y
+        self.sigma_x_ = sigma_x
+        self.sigma_y_ = sigma_y
 
         self.bayesian = False
         self.is_calibrated = False
+
+    def sigma_x(self):
+        n = len(self.x_hist)
+        y = np.exp(1 * (n - 5))
+        y = 1 - y / (1 + y)
+        y = y * 0.25 + 0.25
+        return y
+
+    def sigma_y(self):
+
+        return self.sigma_x()
 
     def set_x(self, x):
         self.x = x
@@ -391,8 +402,8 @@ class Team(object):
         lmbd = self.lambda_fun(x[0])
         p = other.p_fun(x[1])
         lp = lmbd * p
-        x0 = (x[0] - self.x) / self.sigma_x
-        y0 = (x[1] - other.y) / other.sigma_y
+        x0 = (x[0] - self.x) / self.sigma_x()
+        y0 = (x[1] - other.y) / other.sigma_y()
         return -(lp ** k) * np.exp(-lp) * norm.pdf(x0) * norm.pdf(y0)
 
     def scored_against(self, other, k):
