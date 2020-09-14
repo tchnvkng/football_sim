@@ -23,7 +23,7 @@ class Settings:
 
 
 class Calibrator:
-    def __init__(self, settings, sigma_x=0.45, sigma_y=0.5):
+    def __init__(self, settings, sigma_x=0.2, sigma_y=0.2):
         self.raw_data = None
         self.fixtures = []
         self.teams = dict()
@@ -45,12 +45,15 @@ class Calibrator:
             f.league_home_team.forget_history()
             f.league_away_team.forget_history()
         teams = self.get_teams_for_league(league, year)
-        mean_offense = np.mean([t.offense for t in teams.values() if t.is_calibrated])
-        mean_defense = np.mean([t.defense for t in teams.values() if t.is_calibrated])
+        # mean_offense = np.mean([t.offense for t in teams.values() if t.is_calibrated])
+        # mean_defense = np.mean([t.defense for t in teams.values() if t.is_calibrated])
         for t in teams.values():
             if not t.is_calibrated:
-                t.offense = mean_offense
-                t.defense = mean_defense
+                #t.offense = mean_offense
+                #t.defense = mean_defense
+                t.set_x(0)
+                t.set_y(0)
+                t.t = [np.max(dates)]
         self.initialized.append([league, year])
 
     def calibrate_teams(self, league, year, as_of=None):
@@ -210,7 +213,7 @@ class Fixture:
 
 
 class Team(object):
-    def __init__(self, name='team name', league='SH', sigma_x=0.5, sigma_y=0.5):
+    def __init__(self, name='team name', league='SH', sigma_x=0.1, sigma_y=0.1):
         self.name = name
         self.league = league
         self.id = '{:s}_{:s}'.format(league, name.replace(' ', ''))
@@ -263,12 +266,15 @@ class Team(object):
         self.offense = self.lambda_fun(self.x)
         self.defense = self.p_fun(self.y)
 
-    def forget_history(self):
-        self.x_hist = []
-        self.y_hist = []
-        self.offense_hist = []
-        self.defense_hist = []
-        self.t = []
+    def forget_history(self,t=None):
+        self.x_hist = [self.x_hist[-1]]
+        self.y_hist = [self.y_hist[-1]]
+        self.offense_hist = [self.offense_hist[-1]]
+        self.defense_hist = [self.defense_hist[-1]]
+        if t is None:
+            self.t = [self.t[-1]]
+        else:
+            self.t = [t]
 
     def add_fixture(self, fixture):
         if fixture not in self.fixtures:
@@ -349,7 +355,7 @@ class Team(object):
             p1 = ax[0].plot(self.lmbd_set, self.p, label=self.name + ' off: {:0.2f}'.format(l))
             ax[1].plot(self.tau_set, self.q, c=p1[0].get_color(), label=self.name + ' def: {:0.2f}'.format(t))
         else:
-            if len(self.t)>0:
+            if len(self.t)>1:
                 ut = self.t
                 it = np.array([(x - self.t[0]) / pd.Timedelta('1 day') for x in self.t])
                 # it = np.arange(len(self.t))
