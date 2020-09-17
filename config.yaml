@@ -1,7 +1,9 @@
 BPL:
     nr_cl: 4
     nr_deg: 3
-
+FWSL:
+    nr_cl: 3
+    nr_deg: 1
 FL1:
     nr_cl: 3
     nr_deg: 3
@@ -26,3 +28,4 @@ ELC:
 PL:
     nr_cl: 2
     nr_deg: 2
+    
