@@ -60,10 +60,10 @@ class Fixture:
             self.home_ag = self.home_goals
             self.away_ag = self.away_goals
         else:
-            self.home_ag = self.home_goals
-            self.away_ag = self.away_goals
-            # self.home_ag = np.mean(self.home_metrics)
-            # self.away_ag = np.mean(self.away_metrics)
+            # self.home_ag = self.home_goals
+            # self.away_ag = self.away_goals
+            self.home_ag = np.mean(self.home_metrics)
+            self.away_ag = np.mean(self.away_metrics)
 
 
         self.id = ('_'.join([self.league, self.home_team_name, self.away_team_name, self.date.strftime('%Y-%m-%d')])).replace(' ', '').lower()
