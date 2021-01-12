@@ -678,6 +678,10 @@ class Season:
             return p_cl, fig
         return p_cl, None
 
+    def importance(self, match, ref_team, place=4, or_better=True):
+        p = self.what_if(match, ref_team, show_plot=False, place=place, or_better=or_better)[0]/100
+        return np.sum((p[1:]-p[0])**2)
+
     def process_simulation(self):
         if not self.simulation_done:
             print('simulation not yet done, simulating')
