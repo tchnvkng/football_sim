@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib
+
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from scipy.stats import norm
@@ -23,46 +24,75 @@ class Settings:
 
 
 class Calibrator:
-    def __init__(self, settings, sigma_x=0.2, sigma_y=0.2):
+    def __init__(self, settings, sigma_x=0.2, sigma_y=0.2, file_name='calibrator.pkl', load=False):
         self.raw_data = None
         self.fixtures = []
+        self.fixture_ids = []
         self.teams = dict()
         self.settings = settings
         self.sigma_x = sigma_x
         self.sigma_y = sigma_y
-        self.file_name = 'calibrator.pkl'
-        self.initialized=[]
+        self.file_name = file_name
+        self.initialized = []
+        if load:
+            self.load()
+        else:
+            self.reset()
+
+    def reset(self):
+        if os.path.isfile(self.file_name):
+            os.remove(self.file_name)
+
+    def load(self):
+        if os.path.isfile(self.file_name):
+            with open(self.file_name, 'rb') as f:
+                self.teams = pickle.load(f)
+                self.fixtures = pickle.load(f)
+                self.fixture_ids = pickle.load(f)
+                self.raw_data = pickle.load(f)
+
+    def save(self):
+        with open(self.file_name, 'wb') as f:
+            pickle.dump(self.teams, f, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(self.fixtures, f, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(self.fixture_ids, f, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(self.raw_data, f, pickle.HIGHEST_PROTOCOL)
 
     def initialize_calibration(self, league, year):
         completed_fixtures = self.get_completed_fixtures(league, year - 1)
-        dates = [f.date for f in completed_fixtures]
-        is_sorted = np.all(dates[:-1] <= dates[1:])
-        assert is_sorted
-        [f.update_teams(update_forecast=True) for f in completed_fixtures]
-        for f in completed_fixtures:
-            f.home_team.forget_history()
-            f.away_team.forget_history()
-            f.league_home_team.forget_history()
-            f.league_away_team.forget_history()
-        teams = self.get_teams_for_league(league, year)
+        if len(completed_fixtures)>0:
+            dates = [f.date for f in completed_fixtures]
+            if len(dates)>1:
+                is_sorted = np.all(dates[:-1] <= dates[1:])
+                assert is_sorted
 
-        for t in teams.values():
-            if not t.is_calibrated:
-                #t.offense = mean_offense
-                #t.defense = mean_defense
-                t.set_x(0)
-                t.set_y(0)
-                t.t = [np.max(dates)]
+            [f.update_teams(update_forecast=True) for f in completed_fixtures]
+            for f in completed_fixtures:
+                f.home_team.forget_history()
+                f.away_team.forget_history()
+                f.league_home_team.forget_history()
+                f.league_away_team.forget_history()
+            teams = self.get_teams_for_league(league, year)
+
+            for t in teams.values():
+                if not t.is_calibrated:
+                    # t.offense = mean_offense
+                    # t.defense = mean_defense
+                    t.set_x(0)
+                    t.set_y(0)
+                    t.t = [np.max(dates)]
         self.initialized.append([league, year])
 
     def calibrate_teams(self, league, year, as_of=None):
-        if [league,year] not in self.initialized:
-            self.initialize_calibration(league,year)
+        if [league, year] not in self.initialized:
+            self.initialize_calibration(league, year)
         completed_fixtures = self.get_completed_fixtures(league, year, as_of=as_of)
-        dates = [f.date for f in completed_fixtures]
-        is_sorted = np.all(dates[:-1] <= dates[1:])
-        assert is_sorted
-        [f.update_teams(update_forecast=True) for f in completed_fixtures]
+        if len(completed_fixtures) > 0:
+            dates = [f.date for f in completed_fixtures]
+            if len(dates)>1:
+                is_sorted = np.all(dates[:-1] <= dates[1:])
+                assert is_sorted
+            [f.update_teams(update_forecast=True) for f in completed_fixtures]
 
     def reset_teams(self):
         for team in self.teams.values():
@@ -71,9 +101,9 @@ class Calibrator:
     def get_completed_fixtures(self, league_name, year, as_of=None):
         all_fixtures = self.get_fixtures_for_league(league_name, year)
         if as_of is None:
-            return [f for f in all_fixtures if f.completed]
+            return [f for f in all_fixtures if f.completed and not f.used_for_calibrating]
         else:
-            return [f for f in all_fixtures if f.completed and f.date <= as_of]
+            return [f for f in all_fixtures if f.completed and not f.used_for_calibrating and f.date <= as_of]
 
     def get_remaining_fixtures(self, league_name, year, as_of=None):
         all_fixtures = self.get_fixtures_for_league(league_name, year)
@@ -93,8 +123,10 @@ class Calibrator:
         ind = self.raw_data['League'].apply(lambda x: x in self.settings.domestic_leagues)
         for i, row in self.raw_data.loc[ind].sort_values(by='Date').iterrows():
             f = Fixture(row)
-            f.set_teams(self)
-            self.fixtures.append(f)
+            if f.id not in self.fixture_ids:
+                f.set_teams(self)
+                self.fixtures.append(f)
+                self.fixture_ids.append(f.id)
 
     def get_team(self, league, name):
         if 'Home' in name or 'Away' in name:
@@ -224,8 +256,8 @@ class Team(object):
         self.tau_set = np.linspace(0, 1, 101)
         self.q = self.tau_set * 0 + 1
         self.q = self.q / self.q.sum()
-        self.lambda_fun = lambda x: 10 / (1 + np.exp(-np.array(x)))
-        self.p_fun = lambda x: 1 / (1 + np.exp(-np.array(x)))
+        #self.lambda_fun = lambda x: 10 / (1 + np.exp(-np.array(x)))
+        #self.p_fun = lambda x: 1 / (1 + np.exp(-np.array(x)))
         self.x_hist = []
         self.y_hist = []
         self.x = 0
@@ -241,6 +273,14 @@ class Team(object):
 
         self.bayesian = False
         self.is_calibrated = False
+
+    @staticmethod
+    def p_fun(x):
+        return 1 / (1 + np.exp(-np.array(x)))
+
+    @staticmethod
+    def lambda_fun(x):
+        return  10 / (1 + np.exp(-np.array(x)))
 
     def sigma_x(self):
         n = len(self.x_hist)
@@ -276,7 +316,7 @@ class Team(object):
         self.offense = self.lambda_fun(self.x)
         self.defense = self.p_fun(self.y)
 
-    def forget_history(self,t=None):
+    def forget_history(self, t=None):
         self.x_hist = [self.x_hist[-1]]
         self.y_hist = [self.y_hist[-1]]
         self.offense_hist = [self.offense_hist[-1]]
@@ -338,14 +378,14 @@ class Team(object):
     def vs(self, other_team, n=int(1e4), home_advantage=1, t=90, g_h=0, g_a=0):
 
         if self.bayesian:
-            l_h = (t/90)*np.random.choice(self.lmbd_set, size=n, p=self.p) * np.random.choice(other_team.tau_set, size=n, p=other_team.q) * home_advantage
-            l_a = (t/90)*np.random.choice(other_team.lmbd_set, size=n, p=other_team.p) * np.random.choice(self.tau_set, size=n, p=self.q)
+            l_h = (t / 90) * np.random.choice(self.lmbd_set, size=n, p=self.p) * np.random.choice(other_team.tau_set, size=n, p=other_team.q) * home_advantage
+            l_a = (t / 90) * np.random.choice(other_team.lmbd_set, size=n, p=other_team.p) * np.random.choice(self.tau_set, size=n, p=self.q)
             g_h += np.random.poisson(l_h)
             g_a += np.random.poisson(l_a)
         else:
 
-            l_h = (t/90)*self.offense * other_team.defense * home_advantage
-            l_a = (t/90)*other_team.offense * self.defense
+            l_h = (t / 90) * self.offense * other_team.defense * home_advantage
+            l_a = (t / 90) * other_team.offense * self.defense
             g_h += np.random.poisson(l_h, n)
             g_a += np.random.poisson(l_a, n)
 
@@ -365,7 +405,7 @@ class Team(object):
             p1 = ax[0].plot(self.lmbd_set, self.p, label=self.name + ' off: {:0.2f}'.format(l))
             ax[1].plot(self.tau_set, self.q, c=p1[0].get_color(), label=self.name + ' def: {:0.2f}'.format(t))
         else:
-            if len(self.t)>1:
+            if len(self.t) > 1:
                 ut = self.t
                 it = np.array([(x - self.t[0]) / pd.Timedelta('1 day') for x in self.t])
                 # it = np.arange(len(self.t))
@@ -381,7 +421,6 @@ class Team(object):
                 ax[1].plot(it, self.defense_hist, c=colors[1], label=self.name + ' def: {:0.2f}'.format(t))
                 ax[1].set_xticks(xticks)
                 ax[1].set_xticklabels([x.strftime('%Y-%m-%d') for x in labels], rotation=90)
-
 
         ax[0].legend()
         ax[0].grid(True)
@@ -431,7 +470,7 @@ def p_plot(x):
 
 
 class Season:
-    def __init__(self, name, year, calibrator, use_home_advantage=True, base_folder='./',as_of = None):
+    def __init__(self, name, year, calibrator, use_home_advantage=True, base_folder='./', as_of=None):
         self.as_of = as_of
         self.output_folder = os.path.join(base_folder, name)
         self.today = pd.to_datetime('today')
@@ -487,7 +526,7 @@ class Season:
 
     def process_current_results(self):
         completed_fixtures = self.calibrator.get_completed_fixtures(self.name, self.year, as_of=self.as_of)
-        if len(completed_fixtures)>0:
+        if len(completed_fixtures) > 0:
             self.league_start = np.min([f.date for f in completed_fixtures])
         else:
             self.league_start = pd.to_datetime('today')
@@ -515,7 +554,7 @@ class Season:
         gd = [self.current_goals[x] - self.current_goals_against[x] for x in self.current_goals]
         a = np.min(gd)
         b = np.max(gd)
-        g = [self.current_goals[x]  for x in self.current_goals]
+        g = [self.current_goals[x] for x in self.current_goals]
         c = np.min(g)
         d = np.max(g)
         for team_name in self.current_points:
@@ -528,14 +567,14 @@ class Season:
 
         team_names = []
         mp = []
-        for team_name,p in self.current_modified_points.items():
+        for team_name, p in self.current_modified_points.items():
             team_names.append(team_name)
             mp.append(p)
         i_sort = np.argsort(-np.array(mp))
         sorted_teams = np.array(team_names)[i_sort]
 
-        for i,team_name in enumerate(sorted_teams):
-            self.current_place_per_team[team_name] = i+1
+        for i, team_name in enumerate(sorted_teams):
+            self.current_place_per_team[team_name] = i + 1
 
         self.matches_to_sim = self.calibrator.get_remaining_fixtures(self.name, self.year, as_of=self.as_of)
         self.match_id = {match.id: i for i, match in enumerate(self.matches_to_sim)}
@@ -679,8 +718,8 @@ class Season:
         return p_cl, None
 
     def importance(self, match, ref_team, place=4, or_better=True):
-        p = self.what_if(match, ref_team, show_plot=False, place=place, or_better=or_better)[0]/100
-        return np.sum((p[1:]-p[0])**2)
+        p = self.what_if(match, ref_team, show_plot=False, place=place, or_better=or_better)[0] / 100
+        return np.sum((p[1:] - p[0]) ** 2)
 
     def process_simulation(self):
         if not self.simulation_done:
@@ -777,7 +816,7 @@ class Season:
             _l, _t = self.teams[team_name].means()
             lmbd.append(_l)
             tau.append(_t)
-        strength = np.array(lmbd)/np.array(tau)
+        strength = np.array(lmbd) / np.array(tau)
         tau = np.array(tau).round(2)
         lmbd = np.array(lmbd).round(2)
 
@@ -796,18 +835,18 @@ class Season:
                            'Degr': p_degr,
                            'Off': lmbd,
                            'Deff': tau,
-                           'rating':strength},
+                           'rating': strength},
                           index=team_names)
         df = df.sort_values(by='Points (mean)', ascending=False)
         cols = ['Played', 'Points (current)', 'Points (mean)', 'Points (low)', 'Points (high)', 'Place (low)',
                 'Place (high)', 'Win', 'CL', 'Off',
-                'Deff', 'rating' , 'Degr']
+                'Deff', 'rating', 'Degr']
         if file_name is not None:
             if self.as_of is None:
                 file_name = file_name + '_' + self.today_str
             else:
                 file_name = file_name + '_' + self.as_of.strftime('%Y-%m-%d')
-            file_name = os.path.join(self.output_folder, file_name+'.html')
+            file_name = os.path.join(self.output_folder, file_name + '.html')
             df[cols].to_html(file_name)
 
         return df[cols]
@@ -822,7 +861,6 @@ class Season:
         bins = np.arange(x0, x1, step).astype(int)
         # bins = np.unique(np.round(np.linspace(self.points_per_team.min()-1,self.points_per_team.max()+1,int(1+1.5*self.nr_teams))).astype(int))
         labels = ['[{:d},{:d})'.format(a, b) for a, b in zip(bins[0:-1], bins[1:])]
-
 
         T = np.zeros([self.nr_teams, bins.size - 1])
         team_names = []
@@ -871,7 +909,7 @@ class Season:
                 file_name = file_name + '_' + self.today_str
             else:
                 file_name = file_name + '_' + self.as_of.strftime('%Y-%m-%d')
-            file_name = os.path.join(self.output_folder, file_name+'.png')
+            file_name = os.path.join(self.output_folder, file_name + '.png')
             fig.savefig(file_name)
         return team_names, T, fig
 
@@ -946,7 +984,7 @@ class Season:
                 file_name = file_name + '_' + self.today_str
             else:
                 file_name = file_name + '_' + self.as_of.strftime('%Y-%m-%d')
-            file_name = os.path.join(self.output_folder, file_name+'.png')
+            file_name = os.path.join(self.output_folder, file_name + '.png')
             fig.savefig(file_name)
 
         return team_names, T, fig
@@ -971,7 +1009,7 @@ class Season:
             self.goals_per_team[self.team_id[team_name], :] - self.goals_against_per_team[self.team_id[team_name], :])
         ax[1, 0].bar(x, y)
         # ax[1, 0].bar(self.current_goals[team_name] - self.current_goals_against[team_name], y.max())
-        gd = self.current_goals[team_name]-self.current_goals_against[team_name]
+        gd = self.current_goals[team_name] - self.current_goals_against[team_name]
         ax[1, 0].axvline(x=gd)
         ax[1, 0].set_title('Goal Difference: {:0.0f}'.format(gd))
         ax[1, 0].grid(True)
@@ -992,45 +1030,45 @@ class Season:
         P = (self.points_per_team[i, :] - p0).astype(int)
         pp = np.unique(P)
         n_to_play = len([x for x in self.matches_to_sim if team_name in [x.home_team.name, x.away_team.name]])
-        pp = np.arange(n_to_play*3+1)
+        pp = np.arange(n_to_play * 3 + 1)
         probs = dict()
         for plc in places:
-            probs[plc]=[]
-        #prob4 = []
-        #prob3 = []
-        #prob2 = []
-        #prob1 = []
+            probs[plc] = []
+        # prob4 = []
+        # prob3 = []
+        # prob2 = []
+        # prob1 = []
         probp = []
         p_x = []
         for p in pp:
             ind = (P == p)
             probp.append(ind.sum() / ind.size)
-            if probp[-1]>0.1/100:
-                p_x.append(p+p0)
-                for _plc,_prob in probs.items():
+            if probp[-1] > 0.1 / 100:
+                p_x.append(p + p0)
+                for _plc, _prob in probs.items():
                     _prob.append(100 * np.sum(self.place_per_team[i, ind] <= _plc) / ind.sum())
 
-                #prob4.append(100*np.sum(self.place_per_team[i, ind] <= 4) / ind.sum())
-                #prob3.append(100*np.sum(self.place_per_team[i, ind] <= 3) / ind.sum())
-                #prob2.append(100*np.sum(self.place_per_team[i, ind] <= 2) / ind.sum())
-                #prob1.append(100 * np.sum(self.place_per_team[i, ind] <= 1) / ind.sum())
+                # prob4.append(100*np.sum(self.place_per_team[i, ind] <= 4) / ind.sum())
+                # prob3.append(100*np.sum(self.place_per_team[i, ind] <= 3) / ind.sum())
+                # prob2.append(100*np.sum(self.place_per_team[i, ind] <= 2) / ind.sum())
+                # prob1.append(100 * np.sum(self.place_per_team[i, ind] <= 1) / ind.sum())
 
         # C = len([x for x in self.matches_to_sim if team_name in [x.home_team.name, x.away_team.name]])
         C = 1
-        p_x=np.array(p_x)
-        #ax[0, 1].plot(p_x / C, prob1, '.-', label='<=1')
-        #ax[0, 1].plot(p_x / C, prob2, '.-', label='<=2')
-        #ax[0, 1].plot(p_x / C, prob3,'.-', label='<=3')
-        #ax[0, 1].plot(p_x / C, prob4,'.-', label='<=4')
+        p_x = np.array(p_x)
+        # ax[0, 1].plot(p_x / C, prob1, '.-', label='<=1')
+        # ax[0, 1].plot(p_x / C, prob2, '.-', label='<=2')
+        # ax[0, 1].plot(p_x / C, prob3,'.-', label='<=3')
+        # ax[0, 1].plot(p_x / C, prob4,'.-', label='<=4')
         for _plc, _prob in probs.items():
             if (np.min(_prob) < 99.99) and (np.max(_prob) > 0.01):
                 ax[0, 1].plot(p_x / C, _prob, '.-', label='<={:0.0f}'.format(_plc))
         ax[0, 1].grid(True)
         # ax[0, 1].plot(p_x / C, prob5,'.-', label='<=5')
 
-        #ax[1, 1].set_title('Probabilities')
+        # ax[1, 1].set_title('Probabilities')
         ax[0, 1].legend()
-        #ax[1, 1].set_xlim([0,n_to_play*3])
+        # ax[1, 1].set_xlim([0,n_to_play*3])
         n = 10
         a = np.min(x)
         b = np.max(x)
@@ -1040,12 +1078,12 @@ class Season:
         else:
             xticks = np.arange(a, b + 1)
         ax[0, 1].set_xticks(xticks)
-        labels = ['+{:0.0f} = {:0.1f}/g'.format(x - self.current_points[team_name],( x - self.current_points[team_name])/n_to_play) for x in xticks]
+        labels = ['+{:0.0f} = {:0.1f}/g'.format(x - self.current_points[team_name], (x - self.current_points[team_name]) / n_to_play) for x in xticks]
         ax[0, 1].set_xticklabels(labels, rotation=90)
         ax[0, 1].set_title('Points: {:0.0f}'.format(self.current_points[team_name]))
-        ax1=ax[1,1]
+        ax1 = ax[1, 1]
         ax2 = ax1.twinx()
-        colors = ['C0','C1']
+        colors = ['C0', 'C1']
         team.plt(ax=[ax1, ax2], colors=colors)
         ax2.set_ylabel('Defense', color=colors[1])  # we already handled the x-label with ax1
         ax2.tick_params(axis='y', labelcolor=colors[1])
@@ -1054,17 +1092,15 @@ class Season:
         ax1.grid(color=colors[0], alpha=0.5)
         ax2.grid(color=colors[1], alpha=0.5)
 
-        fig.set_size_inches(16*1.5, 9*1.5)
+        fig.set_size_inches(16 * 1.5, 9 * 1.5)
         if file_name is not None:
-            folder = os.path.join(self.output_folder, team_name.replace(' ',''))
+            folder = os.path.join(self.output_folder, team_name.replace(' ', ''))
             if not os.path.isdir(folder):
                 os.mkdir(folder)
             if self.as_of is None:
                 file_name = self.today_str + '_' + file_name
             else:
                 file_name = self.as_of.strftime('%Y-%m-%d') + '_' + file_name
-            file_name = os.path.join(folder, file_name+'.png')
+            file_name = os.path.join(folder, file_name + '.png')
             fig.savefig(file_name)
             plt.close(fig=fig)
-
-

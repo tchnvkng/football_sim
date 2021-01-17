@@ -3,6 +3,7 @@ import os
 import platform
 import pandas as pd
 import matplotlib.pyplot as plt
+import time
 
 if __name__ == '__main__':
     dates = []
@@ -19,16 +20,26 @@ if __name__ == '__main__':
     settings = Settings(os.path.join(base_dir, 'config.yaml'))
     calib = Calibrator(settings)
     year = 2020
+    t = time.time()
     calib.download_all_data()
+    print(time.time()-t,'download')
+
+    t = time.time()
     calib.process_data()
+    print(time.time() - t,'processed')
+    t = time.time()
+
     # f = [f for f in calib.fixtures if f.league == 'BPL' and f.year == 2019 and 'Cry' in f.home_team.name and 'Manchester U' in f.away_team.name][0]
     # f.home_goals = 0
     # f.away_goals = 2
     # f.completed = True
+
     for as_of in as_ofs:
         print(as_of)
         for league in settings.domestic_leagues:
+            t = time.time()
             calib.calibrate_teams(league, year, as_of=as_of)
+            print(time.time() - t,league)
             season = Season(league, year, calib, use_home_advantage=False, base_folder=output_dir, as_of=as_of)
             print(league, 'home advantage', season.home_advantage)
             season.process_current_results()
@@ -44,3 +55,4 @@ if __name__ == '__main__':
                     team = season.teams[team_name]
                     season.team_report(team, file_name=team_name.replace(' ', ''))
             plt.close(fig='all')
+
