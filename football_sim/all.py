@@ -101,9 +101,9 @@ class Calibrator:
     def get_completed_fixtures(self, league_name, year, as_of=None):
         all_fixtures = self.get_fixtures_for_league(league_name, year)
         if as_of is None:
-            return [f for f in all_fixtures if f.completed and not f.used_for_calibrating]
+            return [f for f in all_fixtures if f.completed]
         else:
-            return [f for f in all_fixtures if f.completed and not f.used_for_calibrating and f.date <= as_of]
+            return [f for f in all_fixtures if f.completed  and f.date <= as_of]
 
     def get_remaining_fixtures(self, league_name, year, as_of=None):
         all_fixtures = self.get_fixtures_for_league(league_name, year)
