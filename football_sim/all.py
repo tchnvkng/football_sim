@@ -60,9 +60,9 @@ class Calibrator:
 
     def initialize_calibration(self, league, year):
         completed_fixtures = self.get_completed_fixtures(league, year - 1)
-        if len(completed_fixtures)>0:
+        if len(completed_fixtures) > 0:
             dates = [f.date for f in completed_fixtures]
-            if len(dates)>1:
+            if len(dates) > 1:
                 is_sorted = np.all(dates[:-1] <= dates[1:])
                 assert is_sorted
 
@@ -89,7 +89,7 @@ class Calibrator:
         completed_fixtures = self.get_completed_fixtures(league, year, as_of=as_of)
         if len(completed_fixtures) > 0:
             dates = [f.date for f in completed_fixtures]
-            if len(dates)>1:
+            if len(dates) > 1:
                 is_sorted = np.all(dates[:-1] <= dates[1:])
                 assert is_sorted
             [f.update_teams(update_forecast=True) for f in completed_fixtures]
@@ -103,7 +103,7 @@ class Calibrator:
         if as_of is None:
             return [f for f in all_fixtures if f.completed]
         else:
-            return [f for f in all_fixtures if f.completed  and f.date <= as_of]
+            return [f for f in all_fixtures if f.completed and f.date <= as_of]
 
     def get_remaining_fixtures(self, league_name, year, as_of=None):
         all_fixtures = self.get_fixtures_for_league(league_name, year)
@@ -256,8 +256,8 @@ class Team(object):
         self.tau_set = np.linspace(0, 1, 101)
         self.q = self.tau_set * 0 + 1
         self.q = self.q / self.q.sum()
-        #self.lambda_fun = lambda x: 10 / (1 + np.exp(-np.array(x)))
-        #self.p_fun = lambda x: 1 / (1 + np.exp(-np.array(x)))
+        # self.lambda_fun = lambda x: 10 / (1 + np.exp(-np.array(x)))
+        # self.p_fun = lambda x: 1 / (1 + np.exp(-np.array(x)))
         self.x_hist = []
         self.y_hist = []
         self.x = 0
@@ -280,7 +280,7 @@ class Team(object):
 
     @staticmethod
     def lambda_fun(x):
-        return  10 / (1 + np.exp(-np.array(x)))
+        return 10 / (1 + np.exp(-np.array(x)))
 
     def sigma_x(self):
         n = len(self.x_hist)
@@ -1000,19 +1000,24 @@ class Season:
             self.process_simulation()
         team_name = team.name
         fig, ax = plt.subplots(2, 2)
+        ax_place = ax[0, 0]
+        ax_goal_diff = ax[0, 1]
+        ax_points = ax[1, 0]
+        ax_rating = ax[1, 1]
+
         x, y = p_plot(self.place_per_team[self.team_id[team_name], :])
-        ax[0, 0].bar(x, y)
-        ax[0, 0].set_xticks(x)
-        ax[0, 0].set_title('Place: {:0.0f}'.format(self.current_place_per_team[team_name]))
-        ax[0, 0].grid(True)
+        ax_place.bar(x, y)
+        ax_place.set_xticks(x)
+        ax_place.set_title('Place: {:0.0f}'.format(self.current_place_per_team[team_name]))
+        ax_place.grid(True)
         x, y = p_plot(
             self.goals_per_team[self.team_id[team_name], :] - self.goals_against_per_team[self.team_id[team_name], :])
-        ax[1, 0].bar(x, y)
-        # ax[1, 0].bar(self.current_goals[team_name] - self.current_goals_against[team_name], y.max())
+        ax_goal_diff.bar(x, y)
+        # ax_goal_diff.bar(self.current_goals[team_name] - self.current_goals_against[team_name], y.max())
         gd = self.current_goals[team_name] - self.current_goals_against[team_name]
-        ax[1, 0].axvline(x=gd)
-        ax[1, 0].set_title('Goal Difference: {:0.0f}'.format(gd))
-        ax[1, 0].grid(True)
+        ax_goal_diff.axvline(x=gd)
+        ax_goal_diff.set_title('Goal Difference: {:0.0f}'.format(gd))
+        ax_goal_diff.grid(True)
         # x, y = p_plot(self.goals_per_team[self.team_id[team_name], :])
         team_name = team.name
         p0 = self.current_points[team_name]
@@ -1022,10 +1027,11 @@ class Season:
         # p0=league.current_points['Wolverhampton']
         # i = league.team_id['Wolverhampton']
         x, y = p_plot(self.points_per_team[self.team_id[team_name], :])
-        ax[0, 1].bar(x, y)
-        # ax[0, 1].bar(self.current_points[team_name], y.max())
-        ax[0, 1].axvline(x=self.current_points[team_name])
-        # xticks = ax[0, 1].get_xticks()
+        ax_points_ = ax_points.twinx()
+        ax_points_.bar(x, y, alpha=0.7)
+        # ax_goal_diff.bar(self.current_points[team_name], y.max())
+        ax_points.axvline(x=self.current_points[team_name])
+        # xticks = ax_goal_diff.get_xticks()
 
         P = (self.points_per_team[i, :] - p0).astype(int)
         pp = np.unique(P)
@@ -1056,18 +1062,19 @@ class Season:
         # C = len([x for x in self.matches_to_sim if team_name in [x.home_team.name, x.away_team.name]])
         C = 1
         p_x = np.array(p_x)
-        # ax[0, 1].plot(p_x / C, prob1, '.-', label='<=1')
-        # ax[0, 1].plot(p_x / C, prob2, '.-', label='<=2')
-        # ax[0, 1].plot(p_x / C, prob3,'.-', label='<=3')
-        # ax[0, 1].plot(p_x / C, prob4,'.-', label='<=4')
+        # ax_goal_diff.plot(p_x / C, prob1, '.-', label='<=1')
+        # ax_goal_diff.plot(p_x / C, prob2, '.-', label='<=2')
+        # ax_goal_diff.plot(p_x / C, prob3,'.-', label='<=3')
+        # ax_goal_diff.plot(p_x / C, prob4,'.-', label='<=4')
         for _plc, _prob in probs.items():
             if (np.min(_prob) < 99.99) and (np.max(_prob) > 0.01):
-                ax[0, 1].plot(p_x / C, _prob, '.-', label='<={:0.0f}'.format(_plc))
-        ax[0, 1].grid(True)
-        # ax[0, 1].plot(p_x / C, prob5,'.-', label='<=5')
+                ax_points.plot(p_x / C, _prob, '.-', label='<={:0.0f}'.format(_plc))
+        ax_points.set_ylim([0, 100])
+        ax_points.grid(True)
+        # ax_goal_diff.plot(p_x / C, prob5,'.-', label='<=5')
 
         # ax[1, 1].set_title('Probabilities')
-        ax[0, 1].legend()
+        ax_points.legend()
         # ax[1, 1].set_xlim([0,n_to_play*3])
         n = 10
         a = np.min(x)
@@ -1077,11 +1084,12 @@ class Season:
             xticks = np.arange(a, b + d, d)
         else:
             xticks = np.arange(a, b + 1)
-        ax[0, 1].set_xticks(xticks)
-        labels = ['+{:0.0f} = {:0.1f}/g'.format(x - self.current_points[team_name], (x - self.current_points[team_name]) / n_to_play) for x in xticks]
-        ax[0, 1].set_xticklabels(labels, rotation=90)
-        ax[0, 1].set_title('Points: {:0.0f}'.format(self.current_points[team_name]))
-        ax1 = ax[1, 1]
+        ax_points.set_xticks(xticks)
+        labels = ['+{:0.0f} ={:0.0f} = {:0.1f}/g'.format(x - self.current_points[team_name], x, (x - self.current_points[team_name]) / n_to_play) for x in xticks]
+        ax_points.set_xticklabels(labels, rotation=90)
+        ax_points.set_title('Points: {:0.0f}'.format(self.current_points[team_name]))
+
+        ax1 = ax_rating
         ax2 = ax1.twinx()
         colors = ['C0', 'C1']
         team.plt(ax=[ax1, ax2], colors=colors)
